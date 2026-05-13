@@ -1,0 +1,22 @@
+{
+  "permissions": {
+    "allow": [
+      "PowerShell(Get-ChildItem -Path \"c:\\\\Users\\\\chara\\\\Projects\\\\PM-webapp\" -ErrorAction SilentlyContinue; if \\(-not \\(Test-Path \"c:\\\\Users\\\\chara\\\\Projects\\\\PM-webapp\"\\)\\) { Write-Output \"Directory does not exist - need to create it\" } else { Write-Output \"Directory exists\" })",
+      "PowerShell(Rename-Item -Path \"C:\\\\Users\\\\chara\\\\Projects\\\\PM-webapp\\\\.gitignore\" -NewName \".gitignore.old\" -Force)",
+      "Bash(npx create-next-app@14 . --typescript --tailwind --eslint --app --no-src-dir --import-alias \"@/*\")",
+      "Read(//c/Users/chara/Projects/**)",
+      "Bash(npx create-next-app@14 growth-pm-webapp-init --typescript --tailwind --eslint --app --no-src-dir --import-alias \"@/*\")",
+      "PowerShell($src = \"C:\\\\Users\\\\chara\\\\Projects\\\\growth-pm-webapp-init\"; $dst = \"C:\\\\Users\\\\chara\\\\Projects\\\\PM-webapp\"; robocopy $src $dst /E /XD \".git\" /NFL /NDL /NP /NJS /NJH; Write-Output \"Files copied. Exit code: $LASTEXITCODE\")",
+      "Bash(npm install *)",
+      "Bash(npx shadcn@latest init -d)",
+      "Bash(npx shadcn@latest add input label badge dialog dropdown-menu select sheet toast --yes)",
+      "Bash(npx shadcn@latest add input label badge dialog dropdown-menu select sheet sonner --yes)",
+      "Bash(npx tsc *)",
+      "Bash(git init *)",
+      "Bash(git add *)"
+    ],
+    "additionalDirectories": [
+      "C:\\Users\\chara\\Projects\\growth-pm-webapp-init"
+    ]
+  }
+}
