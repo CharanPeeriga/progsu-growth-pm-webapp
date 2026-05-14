@@ -5,6 +5,7 @@ import { motion } from "framer-motion";
 import { fetchAllTasks } from "@/lib/supabase";
 import type { DBTask } from "@/lib/types";
 import { cn } from "@/lib/utils";
+import { BarChart2, CalendarDays } from "lucide-react";
 
 const GUILD_ID = process.env.NEXT_PUBLIC_DISCORD_GUILD_ID ?? "";
 
@@ -16,21 +17,25 @@ function isOverdue(t: DBTask): boolean {
 }
 
 function dueDateBadgeClass(t: DBTask): string {
-  if (!t.due_date) return "text-muted-foreground";
-  if (t.status === "done") return "text-muted-foreground";
+  if (!t.due_date || t.status === "done")
+    return "bg-muted text-muted-foreground border border-border";
   const now = new Date();
   now.setHours(0, 0, 0, 0);
   const due = new Date(t.due_date + "T00:00:00");
   const diff = (due.getTime() - now.getTime()) / (1000 * 60 * 60 * 24);
-  if (diff < 0) return "bg-red-900/40 text-red-400 border border-red-800";
-  if (diff <= 2) return "bg-yellow-900/40 text-yellow-400 border border-yellow-800";
+  if (diff < 0) return "bg-red-950/60 text-red-400 border border-red-900/40";
+  if (diff <= 2) return "bg-yellow-950/60 text-yellow-400 border border-yellow-900/40";
   return "bg-muted text-muted-foreground border border-border";
 }
 
 function formatDate(s: string | null): string {
   if (!s) return "No due date";
   const d = new Date(s + "T12:00:00");
-  return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+  return d.toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
 }
 
 export default function ProgressPage() {
@@ -60,11 +65,19 @@ export default function ProgressPage() {
   const perPerson = useMemo(() => {
     const map = new Map<
       string,
-      { completed: number; pending: number; overdue: number; oldestOverdue: DBTask | null }
+      {
+        completed: number;
+        pending: number;
+        overdue: number;
+        oldestOverdue: DBTask | null;
+      }
     >();
     for (const t of filtered) {
       const prev = map.get(t.assignee_id) ?? {
-        completed: 0, pending: 0, overdue: 0, oldestOverdue: null,
+        completed: 0,
+        pending: 0,
+        overdue: 0,
+        oldestOverdue: null,
       };
       if (t.status === "done") {
         prev.completed++;
@@ -72,7 +85,9 @@ export default function ProgressPage() {
         prev.overdue++;
         if (
           !prev.oldestOverdue ||
-          (t.due_date && prev.oldestOverdue.due_date && t.due_date < prev.oldestOverdue.due_date)
+          (t.due_date &&
+            prev.oldestOverdue.due_date &&
+            t.due_date < prev.oldestOverdue.due_date)
         ) {
           prev.oldestOverdue = t;
         }
@@ -97,15 +112,18 @@ export default function ProgressPage() {
     { label: "Total Assigned", value: total },
     { label: "Completed", value: completed },
     { label: "Pending", value: pending },
-    { label: "Overdue", value: overdue, highlight: overdue > 0 },
+    { label: "Overdue", value: overdue, danger: overdue > 0 },
   ];
 
   return (
-    <div className="space-y-8">
-      <div className="flex items-center justify-between">
+    <div className="space-y-6 page-fade-in">
+      {/* Header */}
+      <div className="flex items-start justify-between mb-6">
         <div>
-          <h1 className="text-2xl font-bold">Progress</h1>
-          <p className="text-muted-foreground text-sm mt-1">Track completion across the team</p>
+          <h1 className="text-2xl font-semibold text-foreground">Progress</h1>
+          <p className="text-sm text-muted-foreground mt-1">
+            Track completion across the team
+          </p>
         </div>
         <div className="flex items-center gap-1 bg-muted rounded-lg p-1">
           {(["week", "all"] as const).map((t) => (
@@ -113,7 +131,7 @@ export default function ProgressPage() {
               key={t}
               onClick={() => setTimeframe(t)}
               className={cn(
-                "px-3 py-1 rounded-md text-xs font-medium transition-colors",
+                "px-3 py-1.5 rounded-md text-sm font-medium transition-colors",
                 timeframe === t
                   ? "bg-primary text-primary-foreground"
                   : "text-muted-foreground hover:text-foreground"
@@ -125,85 +143,129 @@ export default function ProgressPage() {
         </div>
       </div>
 
-      {/* Overview cards */}
+      {/* Overview stat cards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        {stats.map(({ label, value, highlight }) => (
+        {stats.map(({ label, value, danger }) => (
           <motion.div
             key={label}
-            initial={{ opacity: 0, y: 12 }}
+            initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ type: "spring", stiffness: 100, damping: 14 }}
-            className="bg-card border border-border rounded-lg p-5 shadow-sm"
+            transition={{ type: "spring" as const, stiffness: 100, damping: 15 }}
+            className="bg-card border border-border rounded-xl p-6 shadow-sm"
           >
-            <p className="text-muted-foreground text-xs font-medium uppercase tracking-wide">{label}</p>
-            <p className={cn("text-3xl font-bold mt-1", highlight && "text-red-500")}>{value}</p>
+            <p className="text-sm text-muted-foreground font-medium">{label}</p>
+            <p
+              className={cn(
+                "text-3xl font-bold mt-1",
+                danger ? "text-red-400" : "text-foreground"
+              )}
+            >
+              {value}
+            </p>
           </motion.div>
         ))}
       </div>
 
-      {/* Completion rate */}
+      {/* Completion rate bar */}
       {!loading && (
         <motion.div
-          initial={{ opacity: 0, y: 12 }}
+          initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
-          className="bg-card border border-border rounded-lg p-6 shadow-sm"
+          className="bg-card border border-border rounded-xl p-6 shadow-sm"
         >
           <div className="flex items-baseline justify-between mb-3">
-            <h2 className="font-semibold">Completion Rate</h2>
-            <span className="text-3xl font-bold text-primary">{completionRate}%</span>
+            <h2 className="text-base font-semibold text-foreground">
+              Completion Rate
+            </h2>
+            <span className="text-3xl font-bold text-primary">
+              {completionRate}%
+            </span>
           </div>
-          <div className="h-3 rounded-full bg-muted overflow-hidden">
+          <div className="h-2.5 rounded-full bg-muted overflow-hidden">
             <motion.div
               className="h-full rounded-full bg-primary"
               initial={{ width: 0 }}
               animate={{ width: `${completionRate}%` }}
-              transition={{ duration: 0.8, ease: "easeOut" }}
+              transition={{ duration: 0.9, ease: "easeOut" }}
             />
           </div>
-          <p className="text-xs text-muted-foreground mt-2">
+          <p className="text-xs text-muted-foreground mt-2.5">
             {completed} of {total} task{total !== 1 ? "s" : ""} completed
           </p>
         </motion.div>
       )}
 
       {/* Per-person table */}
-      <div className="bg-card border border-border rounded-lg shadow-sm overflow-hidden">
-        <div className="p-6 border-b border-border">
-          <h2 className="font-semibold">Per Person</h2>
+      <div className="bg-card border border-border rounded-xl shadow-sm overflow-hidden">
+        <div className="px-6 py-4 border-b border-border">
+          <h2 className="text-base font-semibold text-foreground">Per Person</h2>
         </div>
         <div className="overflow-x-auto">
-          <table className="w-full text-sm text-left">
+          <table className="w-full text-sm text-left min-w-[600px]">
             <thead>
               <tr className="border-b border-border">
-                <th className="p-4 font-medium text-muted-foreground">Discord ID</th>
-                <th className="p-4 font-medium text-muted-foreground text-right">Completed</th>
-                <th className="p-4 font-medium text-muted-foreground text-right">Pending</th>
-                <th className="p-4 font-medium text-muted-foreground text-right">Overdue</th>
-                <th className="p-4 font-medium text-muted-foreground">Oldest Overdue Task</th>
+                <th className="px-4 py-3 text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                  Discord ID
+                </th>
+                <th className="px-4 py-3 text-xs font-medium text-muted-foreground uppercase tracking-wider text-right">
+                  Completed
+                </th>
+                <th className="px-4 py-3 text-xs font-medium text-muted-foreground uppercase tracking-wider text-right">
+                  Pending
+                </th>
+                <th className="px-4 py-3 text-xs font-medium text-muted-foreground uppercase tracking-wider text-right">
+                  Overdue
+                </th>
+                <th className="px-4 py-3 text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                  Oldest Overdue Task
+                </th>
               </tr>
             </thead>
             <tbody>
               {perPerson.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="p-8 text-center text-muted-foreground">No data.</td>
+                  <td colSpan={5} className="px-4 py-16 text-center">
+                    <div className="flex flex-col items-center gap-2">
+                      <BarChart2 size={40} className="text-muted-foreground/30" />
+                      <p className="text-sm font-medium text-muted-foreground">No data yet</p>
+                      <p className="text-xs text-muted-foreground/70">Assign tasks to see per-person stats</p>
+                    </div>
+                  </td>
                 </tr>
               ) : (
                 perPerson.map((p) => (
-                  <tr key={p.id} className="border-b border-border last:border-none hover:bg-muted/50">
-                    <td className="p-4 font-mono text-xs">{p.id}</td>
-                    <td className="p-4 text-right text-green-500 font-medium">{p.completed}</td>
-                    <td className="p-4 text-right text-muted-foreground">{p.pending}</td>
-                    <td className="p-4 text-right">
-                      <span className={p.overdue > 0 ? "text-red-500 font-medium" : "text-muted-foreground"}>
+                  <tr
+                    key={p.id}
+                    className="border-b border-border last:border-none hover:bg-muted/30 transition-colors"
+                  >
+                    <td className="px-4 py-4 font-mono text-xs text-foreground">
+                      {p.id}
+                    </td>
+                    <td className="px-4 py-4 text-right text-green-400 font-medium">
+                      {p.completed}
+                    </td>
+                    <td className="px-4 py-4 text-right text-muted-foreground">
+                      {p.pending}
+                    </td>
+                    <td className="px-4 py-4 text-right">
+                      <span
+                        className={
+                          p.overdue > 0
+                            ? "text-red-400 font-medium"
+                            : "text-muted-foreground"
+                        }
+                      >
                         {p.overdue}
                       </span>
                     </td>
-                    <td className="p-4 text-muted-foreground text-xs">
+                    <td className="px-4 py-4 text-xs text-muted-foreground max-w-[200px] truncate">
                       {p.oldestOverdue ? (
-                        <span>
+                        <>
                           {p.oldestOverdue.task_name}{" "}
-                          <span className="text-red-400">({formatDate(p.oldestOverdue.due_date)})</span>
-                        </span>
+                          <span className="text-red-400">
+                            ({formatDate(p.oldestOverdue.due_date)})
+                          </span>
+                        </>
                       ) : (
                         "—"
                       )}
@@ -217,21 +279,39 @@ export default function ProgressPage() {
       </div>
 
       {/* Upcoming deadlines */}
-      <div className="bg-card border border-border rounded-lg shadow-sm overflow-hidden">
-        <div className="p-6 border-b border-border">
-          <h2 className="font-semibold">Upcoming Deadlines</h2>
+      <div className="bg-card border border-border rounded-xl shadow-sm overflow-hidden">
+        <div className="px-6 py-4 border-b border-border">
+          <h2 className="text-base font-semibold text-foreground">
+            Upcoming Deadlines
+          </h2>
         </div>
         <div className="divide-y divide-border">
           {upcoming.length === 0 ? (
-            <p className="p-8 text-center text-muted-foreground text-sm">No upcoming deadlines.</p>
+            <div className="flex flex-col items-center gap-2 py-16">
+              <CalendarDays size={40} className="text-muted-foreground/30" />
+              <p className="text-sm font-medium text-muted-foreground">No upcoming deadlines</p>
+              <p className="text-xs text-muted-foreground/70">Assign due dates to tasks to see them here</p>
+            </div>
           ) : (
             upcoming.map((t) => (
-              <div key={t.id} className="p-4 flex items-center justify-between hover:bg-muted/50">
+              <div
+                key={t.id}
+                className="px-6 py-4 flex items-center justify-between hover:bg-muted/30 transition-colors"
+              >
                 <div>
-                  <p className="font-medium text-sm">{t.task_name}</p>
-                  <p className="text-xs text-muted-foreground font-mono mt-0.5">{t.assignee_id}</p>
+                  <p className="text-sm font-medium text-foreground">
+                    {t.task_name}
+                  </p>
+                  <p className="text-xs text-muted-foreground font-mono mt-0.5">
+                    {t.assignee_id}
+                  </p>
                 </div>
-                <span className={cn("text-xs px-2.5 py-1 rounded-full font-medium", dueDateBadgeClass(t))}>
+                <span
+                  className={cn(
+                    "text-xs px-2.5 py-1 rounded-full font-medium",
+                    dueDateBadgeClass(t)
+                  )}
+                >
                   {formatDate(t.due_date)}
                 </span>
               </div>

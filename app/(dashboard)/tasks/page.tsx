@@ -5,8 +5,8 @@ import { useSearchParams } from "next/navigation";
 import { motion } from "framer-motion";
 import { Plus, Search } from "lucide-react";
 import { toast } from "sonner";
-import { fetchAllTasks, insertTask, updateTask, deleteTask } from "@/lib/supabase";
-import type { DBTask, NewTask, TaskStatus } from "@/lib/types";
+import { fetchAllTasks, insertTask, updateTask, deleteTask, fetchTeamMembers } from "@/lib/supabase";
+import type { DBTask, NewTask, TaskStatus, TeamMember } from "@/lib/types";
 import { TaskList, type Task } from "@/components/ui/task-list";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -55,7 +55,7 @@ function formatDate(dateStr: string | null): string {
   });
 }
 
-function dbTaskToTask(t: DBTask): Task {
+function dbTaskToTask(t: DBTask, memberMap: Map<string, string>): Task {
   const statusMap: Record<TaskStatus, Task["status"]> = {
     todo: "Pending",
     in_progress: "In Progress",
@@ -65,7 +65,7 @@ function dbTaskToTask(t: DBTask): Task {
   return {
     id: t.id,
     task: t.task_name,
-    assignee: t.assignee_id,
+    assignee: memberMap.get(t.assignee_id) ?? t.assignee_id,
     assigner: t.assigner_id,
     status: statusMap[t.status],
     dueDate: formatDate(t.due_date),
@@ -101,6 +101,7 @@ const defaultNewTask: NewTask = {
 export default function TasksPage() {
   const searchParams = useSearchParams();
   const [tasks, setTasks] = useState<DBTask[]>([]);
+  const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState(searchParams.get("search") ?? "");
   const [filter, setFilter] = useState<FilterStatus>("all");
@@ -119,9 +120,14 @@ export default function TasksPage() {
 
   const load = useCallback(async () => {
     try {
-      const data = await fetchAllTasks(GUILD_ID);
-      setTasks(data);
-    } catch {
+      const [tasksData, membersData] = await Promise.all([
+        fetchAllTasks(GUILD_ID),
+        fetchTeamMembers(GUILD_ID),
+      ]);
+      setTasks(tasksData);
+      setTeamMembers(membersData);
+    } catch (err) {
+      console.error("Failed to load tasks/members:", err);
       toast.error("Failed to load tasks.");
     } finally {
       setLoading(false);
@@ -146,7 +152,20 @@ export default function TasksPage() {
     return list;
   }, [tasks, filter, search]);
 
-  const displayTasks = useMemo(() => filtered.map(dbTaskToTask), [filtered]);
+  const memberMap = useMemo(
+    () => new Map(teamMembers.map((m) => [m.user_id, m.display_name ?? m.user_id])),
+    [teamMembers]
+  );
+
+  const memberIdSet = useMemo(
+    () => new Set(teamMembers.map((m) => m.user_id)),
+    [teamMembers]
+  );
+
+  const displayTasks = useMemo(
+    () => filtered.map((t) => dbTaskToTask(t, memberMap)),
+    [filtered, memberMap]
+  );
 
   // Review banner count — always from full task list
   const reviewCount = useMemo(
@@ -290,6 +309,26 @@ export default function TasksPage() {
     setRejectDialogOpen(true);
   }, []);
 
+  const renderAssignee = useCallback(
+    (task: Task) => {
+      const dbTask = tasks.find((t) => t.id === task.id);
+      const isResolved = dbTask ? memberIdSet.has(dbTask.assignee_id) : false;
+      return (
+        <span
+          className={cn(
+            "block max-w-[140px] truncate text-xs",
+            isResolved
+              ? "text-foreground"
+              : "text-muted-foreground font-mono"
+          )}
+        >
+          {task.assignee}
+        </span>
+      );
+    },
+    [tasks, memberIdSet]
+  );
+
   const renderDueDate = useCallback(
     (task: Task) => {
       const dbTask = tasks.find((t) => t.id === task.id);
@@ -307,7 +346,7 @@ export default function TasksPage() {
   );
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 page-fade-in">
       {/* Page header */}
       <div className="mb-6">
         <h1 className="text-2xl font-semibold text-foreground">Tasks</h1>
@@ -380,13 +419,13 @@ export default function TasksPage() {
           />
         </div>
 
-        <div className="flex items-center gap-1 bg-muted rounded-full p-1 flex-wrap">
+        <div className="flex items-center gap-1 bg-muted rounded-lg p-1 flex-wrap">
           {(Object.keys(filterLabels) as FilterStatus[]).map((f) => (
             <button
               key={f}
               onClick={() => setFilter(f)}
               className={cn(
-                "px-3 py-1.5 rounded-full text-sm font-medium transition-colors",
+                "px-3 py-1.5 rounded-md text-sm font-medium transition-colors",
                 filter === f
                   ? "bg-primary text-primary-foreground"
                   : "text-muted-foreground hover:text-foreground"
@@ -423,31 +462,50 @@ export default function TasksPage() {
           onApprove={onApproveTask}
           onReject={onRejectTask}
           renderDueDate={renderDueDate}
+          renderAssignee={renderAssignee}
+          emptyTitle="No tasks found."
+          emptySubtitle="Assign a task to get started"
         />
       )}
 
       {/* Assign Task Sheet */}
       <Sheet open={assignSheetOpen} onOpenChange={setAssignSheetOpen}>
-        <SheetContent className="bg-card border-border p-0">
+        <SheetContent className="bg-card border-border p-0 gap-0 overflow-y-auto">
           <SheetHeader className="px-6 pt-6 pb-4 border-b border-border">
-            <SheetTitle className="text-lg font-semibold">Assign Task</SheetTitle>
+            <SheetTitle className="text-xl font-semibold">Assign Task</SheetTitle>
           </SheetHeader>
-          <form onSubmit={handleAssign} className="px-6 py-6 space-y-5">
+          <form onSubmit={handleAssign} className="px-6 py-6 space-y-6">
             <div>
-              <Label className="text-sm font-medium mb-1.5 block">
-                Assignee Discord ID
-              </Label>
-              <Input
-                placeholder="Right-click member → Copy ID"
-                value={newTask.assignee_id}
-                onChange={(e) =>
-                  setNewTask((p) => ({ ...p, assignee_id: e.target.value }))
-                }
-                required
-              />
+              <Label className="text-sm font-medium text-muted-foreground mb-2 block">Assignee</Label>
+              {teamMembers.length > 0 ? (
+                <Select
+                  value={newTask.assignee_id}
+                  onValueChange={(v) => setNewTask((p) => ({ ...p, assignee_id: v ?? "" }))}
+                >
+                  <SelectTrigger className="h-10">
+                    <SelectValue placeholder="Select team member" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {teamMembers.map((m) => (
+                      <SelectItem key={m.user_id} value={m.user_id}>
+                        {m.display_name || m.user_id}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              ) : (
+                <Input
+                  placeholder="Right-click member → Copy ID"
+                  value={newTask.assignee_id}
+                  onChange={(e) =>
+                    setNewTask((p) => ({ ...p, assignee_id: e.target.value }))
+                  }
+                  required
+                />
+              )}
             </div>
             <div>
-              <Label className="text-sm font-medium mb-1.5 block">Task Name</Label>
+              <Label className="text-sm font-medium text-muted-foreground mb-2 block">Task Name</Label>
               <Input
                 placeholder="Describe the task…"
                 value={newTask.task_name}
@@ -458,7 +516,7 @@ export default function TasksPage() {
               />
             </div>
             <div>
-              <Label className="text-sm font-medium mb-1.5 block">Due Date</Label>
+              <Label className="text-sm font-medium text-muted-foreground mb-2 block">Due Date</Label>
               <Input
                 type="date"
                 value={newTask.due_date ?? ""}
@@ -469,7 +527,7 @@ export default function TasksPage() {
               />
             </div>
             <div>
-              <Label className="text-sm font-medium mb-1.5 block">Status</Label>
+              <Label className="text-sm font-medium text-muted-foreground mb-2 block">Status</Label>
               <Select
                 value={newTask.status}
                 onValueChange={(v) =>
@@ -489,7 +547,7 @@ export default function TasksPage() {
             </div>
             <Button
               type="submit"
-              className="w-full h-10 bg-primary text-primary-foreground hover:bg-primary/90 font-medium mt-6"
+              className="w-full h-10 bg-primary text-primary-foreground hover:bg-primary/90 font-medium mt-8"
               disabled={submitting}
             >
               {submitting ? "Assigning…" : "Assign Task"}
@@ -500,26 +558,53 @@ export default function TasksPage() {
 
       {/* Edit Task Sheet */}
       <Sheet open={editSheetOpen} onOpenChange={setEditSheetOpen}>
-        <SheetContent className="bg-card border-border p-0">
+        <SheetContent className="bg-card border-border p-0 gap-0 overflow-y-auto">
           <SheetHeader className="px-6 pt-6 pb-4 border-b border-border">
-            <SheetTitle className="text-lg font-semibold">Edit Task</SheetTitle>
+            <SheetTitle className="text-xl font-semibold">Edit Task</SheetTitle>
           </SheetHeader>
           {editingTask && (
-            <form onSubmit={handleEdit} className="px-6 py-6 space-y-5">
+            <form onSubmit={handleEdit} className="px-6 py-6 space-y-6">
               <div>
-                <Label className="text-sm font-medium mb-1.5 block">
-                  Assignee Discord ID
-                </Label>
-                <Input
-                  value={editingTask.assignee_id}
-                  onChange={(e) =>
-                    setEditingTask((p) => p && { ...p, assignee_id: e.target.value })
-                  }
-                  required
-                />
+                <Label className="text-sm font-medium text-muted-foreground mb-2 block">Assignee</Label>
+                {teamMembers.length > 0 ? (
+                  <Select
+                    value={editingTask.assignee_id}
+                    onValueChange={(v) =>
+                      setEditingTask((p) => p && { ...p, assignee_id: v ?? p.assignee_id })
+                    }
+                  >
+                    <SelectTrigger className="h-10">
+                      <SelectValue placeholder="Select team member" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {/* If current assignee isn't in team list, show them as an option */}
+                      {!memberIdSet.has(editingTask.assignee_id) && (
+                        <SelectItem
+                          value={editingTask.assignee_id}
+                          className="text-muted-foreground"
+                        >
+                          {editingTask.assignee_id} (not on team)
+                        </SelectItem>
+                      )}
+                      {teamMembers.map((m) => (
+                        <SelectItem key={m.user_id} value={m.user_id}>
+                          {m.display_name || m.user_id}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                ) : (
+                  <Input
+                    value={editingTask.assignee_id}
+                    onChange={(e) =>
+                      setEditingTask((p) => p && { ...p, assignee_id: e.target.value })
+                    }
+                    required
+                  />
+                )}
               </div>
               <div>
-                <Label className="text-sm font-medium mb-1.5 block">Task Name</Label>
+                <Label className="text-sm font-medium text-muted-foreground mb-2 block">Task Name</Label>
                 <Input
                   value={editingTask.task_name}
                   onChange={(e) =>
@@ -529,7 +614,7 @@ export default function TasksPage() {
                 />
               </div>
               <div>
-                <Label className="text-sm font-medium mb-1.5 block">Due Date</Label>
+                <Label className="text-sm font-medium text-muted-foreground mb-2 block">Due Date</Label>
                 <Input
                   type="date"
                   value={editingTask.due_date ?? ""}
@@ -553,7 +638,7 @@ export default function TasksPage() {
                 )}
               </div>
               <div>
-                <Label className="text-sm font-medium mb-1.5 block">Status</Label>
+                <Label className="text-sm font-medium text-muted-foreground mb-2 block">Status</Label>
                 <Select
                   value={editingTask.status}
                   onValueChange={(v) =>
@@ -575,7 +660,7 @@ export default function TasksPage() {
               </div>
               <Button
                 type="submit"
-                className="w-full h-10 bg-primary text-primary-foreground hover:bg-primary/90 font-medium mt-6"
+                className="w-full h-10 bg-primary text-primary-foreground hover:bg-primary/90 font-medium mt-8"
                 disabled={submitting}
               >
                 {submitting ? "Saving…" : "Save Changes"}
@@ -627,7 +712,7 @@ export default function TasksPage() {
             &ldquo;{rejectingTask?.task}&rdquo; will be moved back to In Progress.
           </p>
           <div>
-            <Label className="text-sm font-medium mb-1.5 block">
+            <Label className="text-sm font-medium text-muted-foreground mb-2 block">
               Rejection Reason
             </Label>
             <Input

@@ -3,6 +3,7 @@
 import * as React from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Pencil, Trash2, ClipboardList, CheckCircle, RotateCcw } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 type UITaskStatus = "Done" | "In Progress" | "In Review" | "Pending";
@@ -25,6 +26,10 @@ export interface TaskListProps {
   onApprove?: (task: Task) => void;
   onReject?: (task: Task) => void;
   renderDueDate?: (task: Task) => React.ReactNode;
+  renderAssignee?: (task: Task) => React.ReactNode;
+  emptyTitle?: string;
+  emptySubtitle?: string;
+  EmptyIcon?: LucideIcon;
 }
 
 const StatusBadge = ({ status }: { status: UITaskStatus }) => {
@@ -60,6 +65,10 @@ export const TaskList = ({
   onApprove,
   onReject,
   renderDueDate,
+  renderAssignee,
+  emptyTitle = "No tasks found.",
+  emptySubtitle,
+  EmptyIcon = ClipboardList,
 }: TaskListProps) => {
   return (
     <div className="w-full rounded-xl border border-border bg-card shadow-sm">
@@ -75,8 +84,11 @@ export const TaskList = ({
             animate={{ opacity: 1, y: 0 }}
             className="flex flex-col items-center justify-center py-16 text-muted-foreground"
           >
-            <ClipboardList size={40} className="mb-3 opacity-30" />
-            <p className="text-sm text-muted-foreground">No tasks found.</p>
+            <EmptyIcon size={40} className="mb-3 text-muted-foreground/30" />
+            <p className="text-sm font-medium text-muted-foreground">{emptyTitle}</p>
+            {emptySubtitle && (
+              <p className="text-xs text-muted-foreground/70 mt-1">{emptySubtitle}</p>
+            )}
           </motion.div>
         ) : (
           <table className="w-full text-sm text-left min-w-[860px]">
@@ -132,8 +144,10 @@ export const TaskList = ({
                         </p>
                       )}
                     </td>
-                    <td className="px-4 py-4 text-muted-foreground font-mono text-xs">
-                      {task.assignee}
+                    <td className="px-4 py-4 text-xs">
+                      {renderAssignee ? renderAssignee(task) : (
+                        <span className="text-muted-foreground font-mono">{task.assignee}</span>
+                      )}
                     </td>
                     <td className="px-4 py-4 text-muted-foreground font-mono text-xs">
                       {task.assigner}

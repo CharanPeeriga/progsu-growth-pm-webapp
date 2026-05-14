@@ -166,7 +166,7 @@ export default function TeamPage() {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 page-fade-in">
       <div className="mb-6">
         <h1 className="text-2xl font-semibold text-foreground">Team</h1>
         <p className="text-sm text-muted-foreground mt-1">
@@ -244,8 +244,9 @@ export default function TeamPage() {
         </div>
       ) : members.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-24 text-muted-foreground">
-          <Users size={40} className="mb-3 opacity-30" />
-          <p className="text-sm">No team members yet. Add one above.</p>
+          <Users size={40} className="mb-3 text-muted-foreground/30" />
+          <p className="text-sm font-medium text-muted-foreground">No team members</p>
+          <p className="text-xs text-muted-foreground/70 mt-1">Add members using the form above</p>
         </div>
       ) : (
         <motion.div

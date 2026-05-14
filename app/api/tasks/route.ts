@@ -1,6 +1,23 @@
 import { createClient } from '@supabase/supabase-js';
 import { NextResponse } from 'next/server';
 
+export async function GET() {
+  const guildId = process.env.NEXT_PUBLIC_DISCORD_GUILD_ID;
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!guildId || !supabaseUrl || !serviceKey) {
+    return NextResponse.json({ error: 'Server misconfiguration' }, { status: 500 });
+  }
+  const supabase = createClient(supabaseUrl, serviceKey, { auth: { persistSession: false } });
+  const { data, error } = await supabase
+    .from('tasks')
+    .select('*')
+    .eq('guild_id', guildId)
+    .order('created_at', { ascending: false });
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  return NextResponse.json(data ?? []);
+}
+
 export async function POST(request: Request) {
   let body: Record<string, unknown>;
   try {

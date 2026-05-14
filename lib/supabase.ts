@@ -10,22 +10,28 @@
 import { createClient as createSupabaseClient } from '@supabase/supabase-js';
 import type { DBTask, NewTask, TeamMember } from './types';
 
-/**
- * Service-role client — bypasses RLS entirely.
- * Falls back to the anon key if the service role key is not available
- * (e.g. in the browser where NEXT_PUBLIC_* env vars are the only ones exposed).
- */
-function createServiceClient() {
-  return createSupabaseClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    { auth: { persistSession: false, autoRefreshToken: false } }
-  );
+// All data operations go through server-side API routes so the
+// service-role key is always used, regardless of whether the caller
+// is a browser component or a Node.js test. The service-role key is
+// not a NEXT_PUBLIC_ var and is therefore undefined in the browser.
+
+function apiBase(): string {
+  return typeof (global as Record<string, unknown>).window === 'undefined'
+    ? (process.env.NEXT_PUBLIC_APP_URL ?? 'http://localhost:3000')
+    : '';
+}
+
+async function apiFetch(url: string, init?: RequestInit): Promise<Response> {
+  const res = await fetch(url, init);
+  if (!res.ok) {
+    const json = await res.json().catch(() => ({})) as { error?: string };
+    throw new Error(json.error ?? `HTTP ${res.status}`);
+  }
+  return res;
 }
 
 /**
  * Anon-key singleton — used for auth operations only.
- * Data operations use the service client so RLS can never interfere.
  */
 let _authClient: ReturnType<typeof createSupabaseClient> | null = null;
 
@@ -43,39 +49,16 @@ export function resetClient() {
   _authClient = null;
 }
 
-function supabaseError(err: unknown): Error {
-  if (err instanceof Error) return err;
-  const e = err as { message?: string };
-  return new Error(e?.message ?? JSON.stringify(err));
+export async function fetchAllTasks(_guildId: string): Promise<DBTask[]> {
+  const res = await apiFetch(`${apiBase()}/api/tasks`);
+  return res.json();
 }
 
-export async function fetchAllTasks(guildId: string): Promise<DBTask[]> {
-  const supabase = createServiceClient();
-  const { data, error } = await supabase
-    .from('tasks')
-    .select('*')
-    .eq('guild_id', guildId)
-    .order('created_at', { ascending: false });
-  if (error) throw supabaseError(error);
-  return data as DBTask[] || [];
-}
-
-/**
- * Inserts a task via the server-side API route so the service-role key
- * is used server-side. In Node.js (tests) there is no window, so an
- * absolute URL is required.
- */
 export async function insertTask(
   task: NewTask & { guild_id: string }
 ): Promise<DBTask> {
   const due_date = task.due_date === '' ? null : task.due_date;
-
-  const base =
-    typeof (global as Record<string, unknown>).window === 'undefined'
-      ? (process.env.NEXT_PUBLIC_APP_URL ?? 'http://localhost:3000')
-      : '';
-
-  const res = await fetch(`${base}/api/tasks`, {
+  const res = await apiFetch(`${apiBase()}/api/tasks`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -85,78 +68,49 @@ export async function insertTask(
       status: task.status,
     }),
   });
-
-  if (!res.ok) {
-    const json = await res.json().catch(() => ({})) as { error?: string };
-    throw new Error(json.error ?? `HTTP ${res.status}`);
-  }
-
-  return res.json() as Promise<DBTask>;
+  return res.json();
 }
 
 export async function updateTask(
   id: number,
   updates: Partial<DBTask>
 ): Promise<DBTask> {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const supabase = createServiceClient() as any;
-  const { data, error } = await supabase
-    .from('tasks')
-    .update(updates)
-    .eq('id', id)
-    .select()
-    .single();
-  if (error) throw supabaseError(error);
-  if (!data) throw new Error(`Task ${id} not found`);
-  return data as DBTask;
+  const res = await apiFetch(`${apiBase()}/api/tasks/${id}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(updates),
+  });
+  return res.json();
 }
 
 export async function deleteTask(id: number): Promise<void> {
-  const supabase = createServiceClient();
-  const { error } = await supabase.from('tasks').delete().eq('id', id);
-  if (error) throw supabaseError(error);
+  await apiFetch(`${apiBase()}/api/tasks/${id}`, { method: 'DELETE' });
 }
 
-export async function fetchTeamMembers(guildId: string): Promise<TeamMember[]> {
-  const supabase = createServiceClient();
-  const { data, error } = await supabase
-    .from('team_members')
-    .select('*')
-    .eq('guild_id', guildId)
-    .order('added_at', { ascending: false });
-  if (error) throw supabaseError(error);
-  return data as TeamMember[] || [];
+export async function fetchTeamMembers(_guildId: string): Promise<TeamMember[]> {
+  const res = await apiFetch(`${apiBase()}/api/team-members`);
+  return res.json();
 }
 
 export async function addTeamMember(
-  guildId: string,
+  _guildId: string,
   userId: string,
   displayName: string
 ): Promise<TeamMember> {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const supabase = createServiceClient() as any;
-  const { data, error } = await supabase
-    .from('team_members')
-    .insert({
-      guild_id: guildId,
-      user_id: userId,
-      display_name: displayName || null,
-    })
-    .select()
-    .single();
-  if (error) throw supabaseError(error);
-  return data as TeamMember;
+  const res = await apiFetch(`${apiBase()}/api/team-members`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ user_id: userId, display_name: displayName || null }),
+  });
+  return res.json();
 }
 
 export async function removeTeamMember(
-  guildId: string,
+  _guildId: string,
   userId: string
 ): Promise<void> {
-  const supabase = createServiceClient();
-  const { error } = await supabase
-    .from('team_members')
-    .delete()
-    .eq('guild_id', guildId)
-    .eq('user_id', userId);
-  if (error) throw supabaseError(error);
+  await apiFetch(
+    `${apiBase()}/api/team-members/${encodeURIComponent(userId)}`,
+    { method: 'DELETE' }
+  );
 }

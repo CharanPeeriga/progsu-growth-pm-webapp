@@ -40,21 +40,22 @@ export default function LoginPage() {
   return (
     <div className="min-h-screen bg-background flex items-center justify-center p-4">
       <motion.div
-        initial={{ opacity: 0, y: 24 }}
+        initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ type: "spring", stiffness: 100, damping: 14 }}
-        className="w-full max-w-sm bg-card border border-border rounded-lg shadow-sm p-8"
+        transition={{ type: "spring" as const, stiffness: 100, damping: 15 }}
+        className="w-full max-w-sm bg-card border border-border rounded-xl shadow-sm p-8"
       >
-        <div className="mb-8 text-center">
-          <h1 className="text-2xl font-bold text-primary">growth-pm-bot</h1>
-          <p className="text-muted-foreground mt-1 text-sm">Admin Dashboard</p>
+        <div className="mb-6">
+          <h1 className="text-2xl font-bold text-primary mb-1">
+            growth-pm-bot
+          </h1>
+          <p className="text-sm text-muted-foreground">Admin Dashboard</p>
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="space-y-1.5">
-            <Label htmlFor="email">Email</Label>
+        <form onSubmit={handleSubmit} className="space-y-5">
+          <div>
+            <Label className="text-sm font-medium mb-1.5 block">Email</Label>
             <Input
-              id="email"
               type="email"
               placeholder="admin@example.com"
               value={email}
@@ -64,10 +65,9 @@ export default function LoginPage() {
             />
           </div>
 
-          <div className="space-y-1.5">
-            <Label htmlFor="password">Password</Label>
+          <div>
+            <Label className="text-sm font-medium mb-1.5 block">Password</Label>
             <Input
-              id="password"
               type="password"
               placeholder="••••••••"
               value={password}
@@ -79,8 +79,8 @@ export default function LoginPage() {
 
           {error && (
             <motion.p
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
+              initial={{ opacity: 0, y: -4 }}
+              animate={{ opacity: 1, y: 0 }}
               className="text-sm text-destructive"
             >
               {error}
@@ -89,7 +89,7 @@ export default function LoginPage() {
 
           <Button
             type="submit"
-            className="w-full bg-primary text-primary-foreground hover:bg-primary/90"
+            className="w-full h-10 bg-primary text-primary-foreground hover:bg-primary/90 font-medium mt-6"
             disabled={loading}
           >
             {loading ? "Signing in…" : "Sign In"}
