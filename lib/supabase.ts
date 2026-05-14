@@ -7,7 +7,7 @@
 // - reminder_channels (managed by /setchannel in the bot)
 // Do not add any webapp-only columns to the tasks table.
 
-import { createClient as createSupabaseClient } from '@supabase/supabase-js';
+import { createBrowserClient } from '@supabase/ssr';
 import type { DBTask, NewTask, TeamMember } from './types';
 
 // All data operations go through server-side API routes so the
@@ -31,22 +31,19 @@ async function apiFetch(url: string, init?: RequestInit): Promise<Response> {
 }
 
 /**
- * Anon-key singleton — used for auth operations only.
+ * Browser auth client — uses createBrowserClient from @supabase/ssr so
+ * auth cookies are written in the format the middleware can read.
+ * Call this inside components/hooks; do not cache at module level.
  */
-let _authClient: ReturnType<typeof createSupabaseClient> | null = null;
-
 export function createClient() {
-  if (!_authClient) {
-    _authClient = createSupabaseClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-    );
-  }
-  return _authClient;
+  return createBrowserClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  );
 }
 
 export function resetClient() {
-  _authClient = null;
+  // no-op kept for backwards compatibility with any test imports
 }
 
 export async function fetchAllTasks(_guildId: string): Promise<DBTask[]> {
