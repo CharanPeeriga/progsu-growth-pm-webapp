@@ -24,6 +24,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import AnimatedDropdown from "@/components/ui/animated-dropdown";
 import {
   Dialog,
   DialogContent,
@@ -103,6 +104,7 @@ function TasksPageContent() {
   const [tasks, setTasks] = useState<DBTask[]>([]);
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadingMembers, setLoadingMembers] = useState(true);
   const [search, setSearch] = useState(searchParams.get("search") ?? "");
   const [filter, setFilter] = useState<FilterStatus>("all");
 
@@ -135,7 +137,7 @@ function TasksPageContent() {
   }, []);
 
   useEffect(() => {
-    load();
+    load().finally(() => setLoadingMembers(false));
   }, [load]);
 
   const filtered = useMemo(() => {
@@ -188,6 +190,14 @@ function TasksPageContent() {
 
   const handleAssign = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!newTask.assignee_id) {
+      toast.error("Please select an assignee");
+      return;
+    }
+    if (!newTask.task_name.trim()) {
+      toast.error("Please enter a task name");
+      return;
+    }
     setSubmitting(true);
     try {
       await insertTask({ ...newTask, guild_id: GUILD_ID });
@@ -477,32 +487,13 @@ function TasksPageContent() {
           <form onSubmit={handleAssign} className="px-6 py-6 space-y-6">
             <div>
               <Label className="text-sm font-medium text-muted-foreground mb-2 block">Assignee</Label>
-              {teamMembers.length > 0 ? (
-                <Select
-                  value={newTask.assignee_id}
-                  onValueChange={(v) => setNewTask((p) => ({ ...p, assignee_id: v ?? "" }))}
-                >
-                  <SelectTrigger className="h-10">
-                    <SelectValue placeholder="Select team member" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {teamMembers.map((m) => (
-                      <SelectItem key={m.user_id} value={m.user_id}>
-                        {m.display_name || m.user_id}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              ) : (
-                <Input
-                  placeholder="Right-click member → Copy ID"
-                  value={newTask.assignee_id}
-                  onChange={(e) =>
-                    setNewTask((p) => ({ ...p, assignee_id: e.target.value }))
-                  }
-                  required
-                />
-              )}
+              <AnimatedDropdown
+                items={teamMembers.map((m) => ({ label: m.display_name || m.user_id, value: m.user_id }))}
+                value={newTask.assignee_id || undefined}
+                onSelect={(v) => setNewTask((p) => ({ ...p, assignee_id: v }))}
+                placeholder={loadingMembers ? "Loading members…" : "Select team member"}
+                loading={loadingMembers && teamMembers.length === 0}
+              />
             </div>
             <div>
               <Label className="text-sm font-medium text-muted-foreground mb-2 block">Task Name</Label>
@@ -566,42 +557,18 @@ function TasksPageContent() {
             <form onSubmit={handleEdit} className="px-6 py-6 space-y-6">
               <div>
                 <Label className="text-sm font-medium text-muted-foreground mb-2 block">Assignee</Label>
-                {teamMembers.length > 0 ? (
-                  <Select
-                    value={editingTask.assignee_id}
-                    onValueChange={(v) =>
-                      setEditingTask((p) => p && { ...p, assignee_id: v ?? p.assignee_id })
-                    }
-                  >
-                    <SelectTrigger className="h-10">
-                      <SelectValue placeholder="Select team member" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {/* If current assignee isn't in team list, show them as an option */}
-                      {!memberIdSet.has(editingTask.assignee_id) && (
-                        <SelectItem
-                          value={editingTask.assignee_id}
-                          className="text-muted-foreground"
-                        >
-                          {editingTask.assignee_id} (not on team)
-                        </SelectItem>
-                      )}
-                      {teamMembers.map((m) => (
-                        <SelectItem key={m.user_id} value={m.user_id}>
-                          {m.display_name || m.user_id}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                ) : (
-                  <Input
-                    value={editingTask.assignee_id}
-                    onChange={(e) =>
-                      setEditingTask((p) => p && { ...p, assignee_id: e.target.value })
-                    }
-                    required
-                  />
-                )}
+                <AnimatedDropdown
+                  items={[
+                    ...(!memberIdSet.has(editingTask.assignee_id)
+                      ? [{ label: `${editingTask.assignee_id} (not on team)`, value: editingTask.assignee_id }]
+                      : []),
+                    ...teamMembers.map((m) => ({ label: m.display_name || m.user_id, value: m.user_id })),
+                  ]}
+                  value={editingTask.assignee_id}
+                  onSelect={(v) => setEditingTask((p) => p && { ...p, assignee_id: v })}
+                  placeholder="Select team member"
+                  loading={loadingMembers && teamMembers.length === 0}
+                />
               </div>
               <div>
                 <Label className="text-sm font-medium text-muted-foreground mb-2 block">Task Name</Label>
