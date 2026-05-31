@@ -112,6 +112,7 @@ export async function POST(request: Request) {
           'Authorization': `Bearer ${notifySecret}`,
         },
         body: JSON.stringify({
+          event: 'task_assigned',
           task_id: insertedTask.id,
           task_name: insertedTask.task_name,
           assignee_id: insertedTask.assignee_id,
