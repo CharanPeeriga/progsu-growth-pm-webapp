@@ -1,5 +1,5 @@
 export type TaskStatus = 'todo' | 'in_progress' | 'review' | 'done';
-export type TeamName = 'growth' | 'tech' | 'operations';
+export type TeamName = 'growth' | 'tech' | 'operations' | 'progirls';
 
 export interface DBTask {
   id: number;

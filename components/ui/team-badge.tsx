@@ -5,12 +5,14 @@ const TEAM_STYLES: Record<TeamName, string> = {
   growth: "bg-green-950/60 text-green-400 border-green-900/40",
   tech: "bg-blue-950/60 text-blue-400 border-blue-900/40",
   operations: "bg-orange-950/60 text-orange-400 border-orange-900/40",
+  progirls: "bg-pink-950/60 text-pink-400 border-pink-900/40",
 };
 
 const TEAM_LABELS: Record<TeamName, string> = {
   growth: "Growth",
   tech: "Tech",
   operations: "Operations",
+  progirls: "Progirls",
 };
 
 export function TeamBadge({ team, className }: { team: TeamName; className?: string }) {
@@ -33,6 +35,7 @@ export function teamTabClass(team: TeamName, active: boolean): string {
     growth: "bg-green-900/40 text-green-400",
     tech: "bg-blue-900/40 text-blue-400",
     operations: "bg-orange-900/40 text-orange-400",
+    progirls: "bg-pink-900/40 text-pink-400",
   };
   return map[team];
 }

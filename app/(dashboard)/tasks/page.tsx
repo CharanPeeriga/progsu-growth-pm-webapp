@@ -59,12 +59,14 @@ const TEAM_FILTERS = [
   { value: "growth" as const, label: "Growth" },
   { value: "tech" as const, label: "Tech" },
   { value: "operations" as const, label: "Operations" },
+  { value: "progirls" as const, label: "Progirls" },
 ];
 
 const TEAM_OPTIONS = [
   { value: "growth", label: "Growth" },
   { value: "tech", label: "Tech" },
   { value: "operations", label: "Operations" },
+  { value: "progirls", label: "Progirls" },
 ];
 
 function formatDate(dateStr: string | null): string {
@@ -207,9 +209,18 @@ function TasksPageContent() {
     [filtered, memberMap]
   );
 
+  const reviewByTeam = useMemo(() => {
+    return tasks
+      .filter((t) => t.status === "review")
+      .reduce((acc, t) => {
+        acc[t.team] = (acc[t.team] ?? 0) + 1;
+        return acc;
+      }, {} as Partial<Record<TeamName, number>>);
+  }, [tasks]);
+
   const reviewCount = useMemo(
-    () => tasks.filter((t) => t.status === "review").length,
-    [tasks]
+    () => Object.values(reviewByTeam).reduce((s, n) => s + (n ?? 0), 0),
+    [reviewByTeam]
   );
 
   const filteredDone = useMemo(() => filtered.filter((t) => t.status === "done").length, [filtered]);
@@ -434,7 +445,11 @@ function TasksPageContent() {
           className="flex items-center justify-between px-5 py-3 rounded-xl bg-indigo-950/60 border border-indigo-700/50"
         >
           <span className="text-sm text-indigo-300 font-medium">
-            ⏳ {reviewCount} task{reviewCount !== 1 ? "s" : ""} awaiting your review
+            ⚠️ Tasks awaiting review:{" "}
+            {(["growth", "tech", "operations", "progirls"] as TeamName[])
+              .filter((team) => (reviewByTeam[team] ?? 0) > 0)
+              .map((team) => `${team.charAt(0).toUpperCase() + team.slice(1)}: ${reviewByTeam[team]}`)
+              .join(" · ")}
           </span>
           <Button
             size="sm"

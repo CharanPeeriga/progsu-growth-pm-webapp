@@ -27,6 +27,7 @@ const TEAM_FILTERS = [
   { value: "growth" as const, label: "Growth" },
   { value: "tech" as const, label: "Tech" },
   { value: "operations" as const, label: "Operations" },
+  { value: "progirls" as const, label: "Progirls" },
 ];
 
 function taskToEvent(task: DBTask): CalendarEvent | null {

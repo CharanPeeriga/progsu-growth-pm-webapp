@@ -36,12 +36,14 @@ const TEAM_FILTERS = [
   { value: "growth" as const, label: "Growth" },
   { value: "tech" as const, label: "Tech" },
   { value: "operations" as const, label: "Operations" },
+  { value: "progirls" as const, label: "Progirls" },
 ];
 
 const TEAM_OPTIONS = [
   { value: "growth", label: "Growth" },
   { value: "tech", label: "Tech" },
   { value: "operations", label: "Operations" },
+  { value: "progirls", label: "Progirls" },
 ];
 
 const containerVariants = {
@@ -453,7 +455,7 @@ export default function TeamPage() {
         </h2>
 
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-          {(["growth", "tech", "operations"] as TeamName[]).map((team) => {
+          {(["growth", "tech", "operations", "progirls"] as TeamName[]).map((team) => {
             const vps = vpByTeam.get(team) ?? [];
             const isAddingHere = addingVPForTeam === team;
             // Members not already VP of this team

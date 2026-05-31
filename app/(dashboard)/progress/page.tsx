@@ -38,6 +38,7 @@ const TEAM_FILTERS = [
   { value: "growth" as const, label: "Growth" },
   { value: "tech" as const, label: "Tech" },
   { value: "operations" as const, label: "Operations" },
+  { value: "progirls" as const, label: "Progirls" },
 ];
 
 const GUILD_ID = process.env.NEXT_PUBLIC_DISCORD_GUILD_ID ?? "";
