@@ -49,8 +49,10 @@ export const suite: TestSuite = {
           task_name: 'API test task',
           due_date: due,
           status: 'todo',
+          team: 'growth',
         });
-        const task = data as Record<string, unknown>;
+        const body = data as { task?: Record<string, unknown> };
+        const task = body.task ?? (data as Record<string, unknown>);
         assert(status === 200, `Expected 200, got ${status} — body: ${JSON.stringify(data)}`);
         assert(typeof task.id === 'number', 'Expected numeric id in response');
         assert(task.task_name === 'API test task', `Wrong task_name: '${task.task_name}'`);
@@ -87,11 +89,13 @@ export const suite: TestSuite = {
           task_name: 'No due date task',
           due_date: '',
           status: 'todo',
+          team: 'growth',
         });
-        const task = data as Record<string, unknown>;
+        const body2 = data as { task?: Record<string, unknown> };
+        const task2 = body2.task ?? (data as Record<string, unknown>);
         assert(status === 200, `Expected 200, got ${status} — body: ${JSON.stringify(data)}`);
-        assert(task.due_date === null, `Expected null due_date, got '${task.due_date}'`);
-        taskIds.push(task.id as number);
+        assert(task2.due_date === null, `Expected null due_date, got '${task2.due_date}'`);
+        taskIds.push(task2.id as number);
       },
     },
     {
@@ -107,21 +111,23 @@ export const suite: TestSuite = {
           task_name: 'Guild injection test',
           due_date: null,
           status: 'todo',
+          team: 'growth',
         });
-        const task = data as Record<string, unknown>;
+        const body3 = data as { task?: Record<string, unknown> };
+        const task3 = body3.task ?? (data as Record<string, unknown>);
         assert(status === 200, `Expected 200, got ${status}`);
         assert(
-          task.guild_id === GUILD_ID,
-          `Expected guild_id '${GUILD_ID}', got '${task.guild_id}'`
+          task3.guild_id === GUILD_ID,
+          `Expected guild_id '${GUILD_ID}', got '${task3.guild_id}'`
         );
-        taskIds.push(task.id as number);
+        taskIds.push(task3.id as number);
 
         // Also verify the task is queryable by guild
         const { data: rows } = await admin
           .from('tasks')
           .select('id')
           .eq('guild_id', GUILD_ID)
-          .eq('id', task.id);
+          .eq('id', task3.id);
         assert(
           Array.isArray(rows) && rows.length === 1,
           'Inserted task does not appear in admin query for correct guild'

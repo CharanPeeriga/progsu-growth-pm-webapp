@@ -29,21 +29,24 @@ export const suite: TestSuite = {
       console.warn(`  ⚠️  Dev server not running at ${DEV_SERVER} — insertTask tests will be skipped`);
     }
 
-    // Sign in via the browser client so the localStorage session is shared
-    // with every subsequent createBrowserClient() call in lib/supabase.ts,
-    // mirroring the exact behaviour in the real browser.
+    // Sign in via the browser client (best-effort; skipped in Node/SSR environments
+    // where createBrowserClient requires cookie handlers that don't exist).
     if (TEST_EMAIL && TEST_PASSWORD) {
-      const client = createClient();
-      const { error } = await client.auth.signInWithPassword({
-        email: TEST_EMAIL,
-        password: TEST_PASSWORD,
-      });
-      if (error) console.warn(`  ⚠️  Auth sign-in failed: ${error.message} — some tests may fail`);
+      try {
+        const client = createClient();
+        const { error } = await client.auth.signInWithPassword({
+          email: TEST_EMAIL,
+          password: TEST_PASSWORD,
+        });
+        if (error) console.warn(`  ⚠️  Auth sign-in failed: ${error.message} — some tests may fail`);
+      } catch {
+        console.warn('  ⚠️  createBrowserClient not available in Node — skipping auth sign-in');
+      }
     }
   },
   async afterAll() {
     await cleanup(admin, taskIds);
-    await createClient().auth.signOut();
+    try { await createClient().auth.signOut(); } catch { /* ignore in Node */ }
     resetClient(); // clear singleton so subsequent suites start fresh
   },
   tests: [
