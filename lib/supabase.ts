@@ -159,10 +159,10 @@ export async function addVPRole(userId: string, team: TeamName): Promise<VPRole>
   return res.json();
 }
 
-export async function removeVPRole(userId: string): Promise<void> {
+export async function removeVPRole(userId: string, team: TeamName): Promise<void> {
   await apiFetch(`${apiBase()}/api/vp-roles`, {
     method: 'DELETE',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ user_id: userId }),
+    body: JSON.stringify({ user_id: userId, team }),
   });
 }

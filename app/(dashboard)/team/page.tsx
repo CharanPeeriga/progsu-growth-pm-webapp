@@ -3,7 +3,7 @@
 import { useState, useEffect, useMemo, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
-import { Users, ChevronDown, ChevronRight, UserPlus, Trash2, Shield } from "lucide-react";
+import { Users, ChevronDown, ChevronRight, UserPlus, Trash2, Shield, Plus } from "lucide-react";
 import { toast } from "sonner";
 import {
   fetchAllTasks,
@@ -74,10 +74,10 @@ export default function TeamPage() {
   const [newMemberTeam, setNewMemberTeam] = useState<TeamName>("growth");
   const [adding, setAdding] = useState(false);
 
-  // VP form state
-  const [vpUserId, setVpUserId] = useState("");
-  const [vpTeam, setVpTeam] = useState<TeamName>("growth");
-  const [settingVP, setSettingVP] = useState(false);
+  // VP state — per-team inline add form + removal confirmation
+  const [addingVPForTeam, setAddingVPForTeam] = useState<TeamName | null>(null);
+  const [addVPUserId, setAddVPUserId] = useState("");
+  const [savingVP, setSavingVP] = useState(false);
   const [removingVP, setRemovingVP] = useState<VPRole | null>(null);
 
   const loadAll = useCallback(async () => {
@@ -201,28 +201,29 @@ export default function TeamPage() {
     }
   };
 
-  const handleSetVP = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!vpUserId) { toast.error("Select a member"); return; }
-    setSettingVP(true);
+  const handleAddVP = async (team: TeamName) => {
+    if (!addVPUserId) { toast.error("Select a member"); return; }
+    setSavingVP(true);
     try {
-      await addVPRole(vpUserId, vpTeam);
-      const name = memberMap.get(vpUserId)?.display_name || vpUserId;
-      toast.success(`✅ ${name} set as VP of ${TEAM_LABELS[vpTeam]} team`);
-      setVpUserId("");
+      await addVPRole(addVPUserId, team);
+      const name = memberMap.get(addVPUserId)?.display_name || addVPUserId;
+      toast.success(`✅ ${name} added as VP of ${TEAM_LABELS[team]} team`);
+      setAddingVPForTeam(null);
+      setAddVPUserId("");
       await loadAll();
     } catch (err) {
       toast.error(`Failed: ${err instanceof Error ? err.message : "Unknown error"}`);
     } finally {
-      setSettingVP(false);
+      setSavingVP(false);
     }
   };
 
   const handleRemoveVP = async () => {
     if (!removingVP) return;
     try {
-      await removeVPRole(removingVP.user_id);
-      toast.success("VP role removed");
+      await removeVPRole(removingVP.user_id, removingVP.team);
+      const name = memberMap.get(removingVP.user_id)?.display_name || removingVP.user_id;
+      toast.success(`✅ ${name} removed as VP of ${TEAM_LABELS[removingVP.team]} team`);
       setRemovingVP(null);
       await loadAll();
     } catch (err) {
@@ -231,8 +232,12 @@ export default function TeamPage() {
   };
 
   const vpByTeam = useMemo(() => {
-    const map = new Map<TeamName, VPRole>();
-    for (const vp of vpRoles) map.set(vp.team, vp);
+    const map = new Map<TeamName, VPRole[]>();
+    for (const vp of vpRoles) {
+      const list = map.get(vp.team) ?? [];
+      list.push(vp);
+      map.set(vp.team, list);
+    }
     return map;
   }, [vpRoles]);
 
@@ -441,77 +446,95 @@ export default function TeamPage() {
       )}
 
       {/* VP Roles section */}
-      <div className="bg-card border border-border rounded-xl p-6 shadow-sm space-y-6">
-        <h2 className="text-base font-semibold text-foreground flex items-center gap-2">
+      <div className="bg-card border border-border rounded-xl p-6 shadow-sm">
+        <h2 className="text-base font-semibold text-foreground flex items-center gap-2 mb-4">
           <Shield size={16} />
           VP Roles
         </h2>
 
-        {/* Current VPs per team */}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           {(["growth", "tech", "operations"] as TeamName[]).map((team) => {
-            const vp = vpByTeam.get(team);
-            const member = vp ? memberMap.get(vp.user_id) : null;
+            const vps = vpByTeam.get(team) ?? [];
+            const isAddingHere = addingVPForTeam === team;
+            // Members not already VP of this team
+            const alreadyVP = new Set(vps.map((v) => v.user_id));
+            const eligibleMembers = members.filter((m) => !alreadyVP.has(m.user_id));
+
             return (
-              <div key={team} className="bg-muted/30 border border-border rounded-lg p-4">
-                <div className="flex items-center justify-between mb-2">
+              <div key={team} className="bg-muted/30 border border-border rounded-lg p-4 space-y-3">
+                <div className="flex items-center justify-between">
                   <TeamBadge team={team} />
                   <span className="text-xs text-muted-foreground">VP</span>
                 </div>
-                {vp ? (
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-sm font-medium text-foreground">{member?.display_name || vp.user_id}</p>
-                      {member?.display_name && (
-                        <p className="text-xs text-muted-foreground font-mono mt-0.5 truncate">{vp.user_id}</p>
-                      )}
+
+                {vps.length === 0 && !isAddingHere && (
+                  <p className="text-sm text-muted-foreground">(none)</p>
+                )}
+
+                {vps.map((vp) => {
+                  const member = memberMap.get(vp.user_id);
+                  return (
+                    <div key={vp.id} className="flex items-center justify-between">
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium text-foreground truncate">
+                          {member?.display_name || vp.user_id}
+                        </p>
+                        {member?.display_name && (
+                          <p className="text-xs text-muted-foreground font-mono truncate">{vp.user_id}</p>
+                        )}
+                      </div>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-7 text-xs ml-2 shrink-0 border-destructive/50 text-destructive hover:bg-destructive/10 hover:border-destructive"
+                        onClick={() => setRemovingVP(vp)}
+                      >
+                        Remove
+                      </Button>
                     </div>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="h-7 text-xs ml-2 border-destructive/50 text-destructive hover:bg-destructive/10 hover:border-destructive"
-                      onClick={() => setRemovingVP(vp)}
-                    >
-                      Remove
-                    </Button>
+                  );
+                })}
+
+                {isAddingHere ? (
+                  <div className="space-y-2 pt-1">
+                    <AnimatedDropdown
+                      items={eligibleMembers.map((m) => ({ label: m.display_name || m.user_id, value: m.user_id }))}
+                      value={addVPUserId || undefined}
+                      onSelect={setAddVPUserId}
+                      placeholder="Select member…"
+                    />
+                    <div className="flex gap-2">
+                      <Button
+                        size="sm"
+                        className="flex-1 h-8 text-xs bg-primary text-primary-foreground hover:bg-primary/90"
+                        onClick={() => handleAddVP(team)}
+                        disabled={savingVP || !addVPUserId}
+                      >
+                        {savingVP ? "Adding…" : "Confirm"}
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-8 text-xs"
+                        onClick={() => { setAddingVPForTeam(null); setAddVPUserId(""); }}
+                      >
+                        Cancel
+                      </Button>
+                    </div>
                   </div>
                 ) : (
-                  <p className="text-sm text-muted-foreground">No VP set</p>
+                  <button
+                    onClick={() => { setAddingVPForTeam(team); setAddVPUserId(""); }}
+                    className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors pt-1"
+                  >
+                    <Plus size={12} />
+                    Add VP
+                  </button>
                 )}
               </div>
             );
           })}
         </div>
-
-        {/* Set VP form */}
-        <form onSubmit={handleSetVP} className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-          <div>
-            <Label className="text-xs text-muted-foreground mb-1.5 block">Member</Label>
-            <AnimatedDropdown
-              items={members.map((m) => ({ label: m.display_name || m.user_id, value: m.user_id }))}
-              value={vpUserId || undefined}
-              onSelect={setVpUserId}
-              placeholder="Select member"
-            />
-          </div>
-          <div>
-            <Label className="text-xs text-muted-foreground mb-1.5 block">Team</Label>
-            <AnimatedDropdown
-              items={TEAM_OPTIONS}
-              value={vpTeam}
-              onSelect={(v) => setVpTeam(v as TeamName)}
-            />
-          </div>
-          <div className="flex items-end">
-            <Button
-              type="submit"
-              className="h-10 w-full bg-primary text-primary-foreground hover:bg-primary/90 font-medium"
-              disabled={settingVP}
-            >
-              {settingVP ? "Setting…" : "Set VP"}
-            </Button>
-          </div>
-        </form>
       </div>
 
       {/* Remove VP confirmation dialog */}
@@ -523,17 +546,18 @@ export default function TeamPage() {
           <p className="text-sm text-muted-foreground -mt-1">
             {removingVP && (
               <>
-                Remove {memberMap.get(removingVP.user_id)?.display_name || removingVP.user_id} as VP of the{" "}
+                Remove{" "}
+                <span className="font-medium text-foreground">
+                  {memberMap.get(removingVP.user_id)?.display_name || removingVP.user_id}
+                </span>{" "}
+                as VP of the{" "}
                 <span className="font-medium text-foreground">{TEAM_LABELS[removingVP.team]}</span> team?
               </>
             )}
           </p>
           <DialogFooter className="gap-2 sm:gap-2 border-0 bg-transparent p-0 pt-2">
             <Button variant="outline" className="h-9" onClick={() => setRemovingVP(null)}>Cancel</Button>
-            <Button
-              className="h-9 bg-destructive/90 text-white hover:bg-destructive"
-              onClick={handleRemoveVP}
-            >
+            <Button className="h-9 bg-destructive/90 text-white hover:bg-destructive" onClick={handleRemoveVP}>
               Remove
             </Button>
           </DialogFooter>

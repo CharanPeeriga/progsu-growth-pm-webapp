@@ -22,12 +22,6 @@ const STATUS_LABELS: Record<string, string> = {
   done: "Done",
 };
 
-const TEAM_EVENT_COLORS: Record<TeamName, string> = {
-  growth: "green",
-  tech: "blue",
-  operations: "orange",
-};
-
 const TEAM_FILTERS = [
   { value: "all" as const, label: "All Teams" },
   { value: "growth" as const, label: "Growth" },
@@ -37,14 +31,13 @@ const TEAM_FILTERS = [
 
 function taskToEvent(task: DBTask): CalendarEvent | null {
   if (!task.due_date) return null;
-  const color = task.team ? TEAM_EVENT_COLORS[task.team] : (STATUS_COLORS[task.status] ?? "blue");
   return {
     id: task.id.toString(),
     title: task.task_name,
     description: task.rejection_reason ? `↩️ Sent back: ${task.rejection_reason}` : undefined,
     startTime: `${task.due_date}T09:00:00`,
     endTime: `${task.due_date}T10:00:00`,
-    color,
+    color: STATUS_COLORS[task.status] ?? "blue",
     category: STATUS_LABELS[task.status] ?? task.status,
     tags: [],
   };
