@@ -27,6 +27,8 @@ export interface TaskListProps {
   onReject?: (task: Task) => void;
   renderDueDate?: (task: Task) => React.ReactNode;
   renderAssignee?: (task: Task) => React.ReactNode;
+  renderTeam?: (task: Task) => React.ReactNode;
+  renderCollaborators?: (task: Task) => React.ReactNode;
   emptyTitle?: string;
   emptySubtitle?: string;
   EmptyIcon?: LucideIcon;
@@ -66,6 +68,8 @@ export const TaskList = ({
   onReject,
   renderDueDate,
   renderAssignee,
+  renderTeam,
+  renderCollaborators,
   emptyTitle = "No tasks found.",
   emptySubtitle,
   EmptyIcon = ClipboardList,
@@ -113,6 +117,16 @@ export const TaskList = ({
                 <th className="px-4 py-3 text-xs font-medium text-muted-foreground uppercase tracking-wider">
                   Status
                 </th>
+                {renderTeam && (
+                  <th className="px-4 py-3 text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                    Team
+                  </th>
+                )}
+                {renderCollaborators && (
+                  <th className="px-4 py-3 text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                    Collaborators
+                  </th>
+                )}
                 <th className="px-4 py-3 text-xs font-medium text-muted-foreground uppercase tracking-wider text-right">
                   Due Date
                 </th>
@@ -155,6 +169,12 @@ export const TaskList = ({
                     <td className="px-4 py-4">
                       <StatusBadge status={task.status} />
                     </td>
+                    {renderTeam && (
+                      <td className="px-4 py-4">{renderTeam(task)}</td>
+                    )}
+                    {renderCollaborators && (
+                      <td className="px-4 py-4 max-w-[180px]">{renderCollaborators(task)}</td>
+                    )}
                     <td className="px-4 py-4 text-right">
                       {renderDueDate ? (
                         renderDueDate(task)

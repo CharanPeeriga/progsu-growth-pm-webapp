@@ -8,7 +8,7 @@
 // Do not add any webapp-only columns to the tasks table.
 
 import { createBrowserClient } from '@supabase/ssr';
-import type { DBTask, NewTask, TeamMember } from './types';
+import type { DBTask, NewTask, TeamMember, TeamName, VPRole, TaskCollaborator } from './types';
 
 // All data operations go through server-side API routes so the
 // service-role key is always used, regardless of whether the caller
@@ -46,14 +46,17 @@ export function resetClient() {
   // no-op kept for backwards compatibility with any test imports
 }
 
-export async function fetchAllTasks(_guildId: string): Promise<DBTask[]> {
-  const res = await apiFetch(`${apiBase()}/api/tasks`);
+export async function fetchAllTasks(team?: TeamName): Promise<DBTask[]> {
+  const url = team
+    ? `${apiBase()}/api/tasks?team=${encodeURIComponent(team)}`
+    : `${apiBase()}/api/tasks`;
+  const res = await apiFetch(url);
   return res.json();
 }
 
 export async function insertTask(
-  task: NewTask & { guild_id: string }
-): Promise<DBTask> {
+  task: NewTask & { guild_id: string; team: TeamName; collaborator_ids?: string[] }
+): Promise<{ task: DBTask; notification: unknown }> {
   const due_date = task.due_date === '' ? null : task.due_date;
   const res = await apiFetch(`${apiBase()}/api/tasks`, {
     method: 'POST',
@@ -63,6 +66,8 @@ export async function insertTask(
       task_name: task.task_name,
       due_date,
       status: task.status,
+      team: task.team,
+      collaborator_ids: task.collaborator_ids ?? [],
     }),
   });
   return res.json();
@@ -92,12 +97,13 @@ export async function fetchTeamMembers(_guildId: string): Promise<TeamMember[]> 
 export async function addTeamMember(
   _guildId: string,
   userId: string,
-  displayName: string
+  displayName: string,
+  team?: TeamName
 ): Promise<TeamMember> {
   const res = await apiFetch(`${apiBase()}/api/team-members`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ user_id: userId, display_name: displayName || null }),
+    body: JSON.stringify({ user_id: userId, display_name: displayName || null, team: team ?? 'growth' }),
   });
   return res.json();
 }
@@ -110,4 +116,53 @@ export async function removeTeamMember(
     `${apiBase()}/api/team-members/${encodeURIComponent(userId)}`,
     { method: 'DELETE' }
   );
+}
+
+export async function fetchCollaborators(taskId: number): Promise<TaskCollaborator[]> {
+  const res = await apiFetch(`${apiBase()}/api/collaborators?task_id=${taskId}`);
+  return res.json();
+}
+
+export async function fetchAllCollaborators(): Promise<TaskCollaborator[]> {
+  const res = await apiFetch(`${apiBase()}/api/collaborators`);
+  return res.json();
+}
+
+export async function addCollaborator(taskId: number, userId: string): Promise<TaskCollaborator> {
+  const res = await apiFetch(`${apiBase()}/api/collaborators`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ task_id: taskId, user_id: userId }),
+  });
+  return res.json();
+}
+
+export async function removeCollaborator(taskId: number, userId: string): Promise<void> {
+  await apiFetch(`${apiBase()}/api/collaborators`, {
+    method: 'DELETE',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ task_id: taskId, user_id: userId }),
+  });
+}
+
+export async function fetchVPRoles(): Promise<VPRole[]> {
+  const res = await apiFetch(`${apiBase()}/api/vp-roles`);
+  return res.json();
+}
+
+export async function addVPRole(userId: string, team: TeamName): Promise<VPRole> {
+  const res = await apiFetch(`${apiBase()}/api/vp-roles`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ user_id: userId, team }),
+  });
+  return res.json();
+}
+
+export async function removeVPRole(userId: string): Promise<void> {
+  await apiFetch(`${apiBase()}/api/vp-roles`, {
+    method: 'DELETE',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ user_id: userId }),
+  });
 }

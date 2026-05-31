@@ -2,12 +2,11 @@
 
 import { useState, useEffect, useMemo } from "react";
 import { motion } from "framer-motion";
-import { fetchAllTasks } from "@/lib/supabase";
-import type { DBTask } from "@/lib/types";
+import { fetchAllTasks, fetchTeamMembers } from "@/lib/supabase";
+import type { DBTask, TeamMember, TeamName } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { BarChart2, CalendarDays } from "lucide-react";
-
-const GUILD_ID = process.env.NEXT_PUBLIC_DISCORD_GUILD_ID ?? "";
+import { TeamBadge, teamTabClass } from "@/components/ui/team-badge";
 
 function isOverdue(t: DBTask): boolean {
   if (!t.due_date || t.status === "done") return false;
@@ -31,30 +30,46 @@ function dueDateBadgeClass(t: DBTask): string {
 function formatDate(s: string | null): string {
   if (!s) return "No due date";
   const d = new Date(s + "T12:00:00");
-  return d.toLocaleDateString("en-US", {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  });
+  return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
 }
+
+const TEAM_FILTERS = [
+  { value: "all" as const, label: "All Teams" },
+  { value: "growth" as const, label: "Growth" },
+  { value: "tech" as const, label: "Tech" },
+  { value: "operations" as const, label: "Operations" },
+];
+
+const GUILD_ID = process.env.NEXT_PUBLIC_DISCORD_GUILD_ID ?? "";
 
 export default function ProgressPage() {
   const [tasks, setTasks] = useState<DBTask[]>([]);
+  const [members, setMembers] = useState<TeamMember[]>([]);
   const [loading, setLoading] = useState(true);
   const [timeframe, setTimeframe] = useState<"week" | "all">("all");
+  const [teamFilter, setTeamFilter] = useState<"all" | TeamName>("all");
 
   useEffect(() => {
-    fetchAllTasks(GUILD_ID)
-      .then(setTasks)
+    Promise.all([fetchAllTasks(), fetchTeamMembers(GUILD_ID)])
+      .then(([t, m]) => { setTasks(t); setMembers(m); })
       .finally(() => setLoading(false));
   }, []);
 
+  const memberMap = useMemo(
+    () => new Map(members.map((m) => [m.user_id, m])),
+    [members]
+  );
+
   const filtered = useMemo(() => {
-    if (timeframe === "all") return tasks;
-    const cutoff = new Date();
-    cutoff.setDate(cutoff.getDate() - 7);
-    return tasks.filter((t) => new Date(t.created_at) >= cutoff);
-  }, [tasks, timeframe]);
+    let list = tasks;
+    if (teamFilter !== "all") list = list.filter((t) => t.team === teamFilter);
+    if (timeframe === "week") {
+      const cutoff = new Date();
+      cutoff.setDate(cutoff.getDate() - 7);
+      list = list.filter((t) => new Date(t.created_at) >= cutoff);
+    }
+    return list;
+  }, [tasks, timeframe, teamFilter]);
 
   const total = filtered.length;
   const completed = filtered.filter((t) => t.status === "done").length;
@@ -63,37 +78,16 @@ export default function ProgressPage() {
   const completionRate = total > 0 ? Math.round((completed / total) * 100) : 0;
 
   const perPerson = useMemo(() => {
-    const map = new Map<
-      string,
-      {
-        completed: number;
-        pending: number;
-        overdue: number;
-        oldestOverdue: DBTask | null;
-      }
-    >();
+    const map = new Map<string, { completed: number; pending: number; overdue: number; oldestOverdue: DBTask | null }>();
     for (const t of filtered) {
-      const prev = map.get(t.assignee_id) ?? {
-        completed: 0,
-        pending: 0,
-        overdue: 0,
-        oldestOverdue: null,
-      };
-      if (t.status === "done") {
-        prev.completed++;
-      } else if (isOverdue(t)) {
+      const prev = map.get(t.assignee_id) ?? { completed: 0, pending: 0, overdue: 0, oldestOverdue: null };
+      if (t.status === "done") prev.completed++;
+      else if (isOverdue(t)) {
         prev.overdue++;
-        if (
-          !prev.oldestOverdue ||
-          (t.due_date &&
-            prev.oldestOverdue.due_date &&
-            t.due_date < prev.oldestOverdue.due_date)
-        ) {
+        if (!prev.oldestOverdue || (t.due_date && prev.oldestOverdue.due_date && t.due_date < prev.oldestOverdue.due_date)) {
           prev.oldestOverdue = t;
         }
-      } else {
-        prev.pending++;
-      }
+      } else prev.pending++;
       map.set(t.assignee_id, prev);
     }
     return Array.from(map.entries())
@@ -102,11 +96,10 @@ export default function ProgressPage() {
   }, [filtered]);
 
   const upcoming = useMemo(() => {
-    return tasks
-      .filter((t) => t.status !== "done" && t.due_date)
-      .sort((a, b) => (a.due_date! > b.due_date! ? 1 : -1))
-      .slice(0, 5);
-  }, [tasks]);
+    let list = tasks.filter((t) => t.status !== "done" && t.due_date);
+    if (teamFilter !== "all") list = list.filter((t) => t.team === teamFilter);
+    return list.sort((a, b) => (a.due_date! > b.due_date! ? 1 : -1)).slice(0, 5);
+  }, [tasks, teamFilter]);
 
   const stats = [
     { label: "Total Assigned", value: total },
@@ -121,9 +114,7 @@ export default function ProgressPage() {
       <div className="flex items-start justify-between mb-6">
         <div>
           <h1 className="text-2xl font-semibold text-foreground">Progress</h1>
-          <p className="text-sm text-muted-foreground mt-1">
-            Track completion across the team
-          </p>
+          <p className="text-sm text-muted-foreground mt-1">Track completion across the team</p>
         </div>
         <div className="flex items-center gap-1 bg-muted rounded-lg p-1">
           {(["week", "all"] as const).map((t) => (
@@ -132,15 +123,33 @@ export default function ProgressPage() {
               onClick={() => setTimeframe(t)}
               className={cn(
                 "px-3 py-1.5 rounded-md text-sm font-medium transition-colors",
-                timeframe === t
-                  ? "bg-primary text-primary-foreground"
-                  : "text-muted-foreground hover:text-foreground"
+                timeframe === t ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"
               )}
             >
               {t === "week" ? "This Week" : "All Time"}
             </button>
           ))}
         </div>
+      </div>
+
+      {/* Team filter tabs */}
+      <div className="flex items-center gap-1 bg-muted rounded-lg p-1 w-fit">
+        {TEAM_FILTERS.map(({ value, label }) => (
+          <button
+            key={value}
+            onClick={() => setTeamFilter(value)}
+            className={cn(
+              "px-3 py-1.5 rounded-md text-sm font-medium transition-colors",
+              teamFilter === value && value === "all"
+                ? "bg-primary text-primary-foreground"
+                : teamFilter === value
+                ? teamTabClass(value as TeamName, true)
+                : "text-muted-foreground hover:text-foreground"
+            )}
+          >
+            {label}
+          </button>
+        ))}
       </div>
 
       {/* Overview stat cards */}
@@ -154,12 +163,7 @@ export default function ProgressPage() {
             className="bg-card border border-border rounded-xl p-6 shadow-sm"
           >
             <p className="text-sm text-muted-foreground font-medium">{label}</p>
-            <p
-              className={cn(
-                "text-3xl font-bold mt-1",
-                danger ? "text-red-400" : "text-foreground"
-              )}
-            >
+            <p className={cn("text-3xl font-bold mt-1", danger ? "text-red-400" : "text-foreground")}>
               {value}
             </p>
           </motion.div>
@@ -174,12 +178,8 @@ export default function ProgressPage() {
           className="bg-card border border-border rounded-xl p-6 shadow-sm"
         >
           <div className="flex items-baseline justify-between mb-3">
-            <h2 className="text-base font-semibold text-foreground">
-              Completion Rate
-            </h2>
-            <span className="text-3xl font-bold text-primary">
-              {completionRate}%
-            </span>
+            <h2 className="text-base font-semibold text-foreground">Completion Rate</h2>
+            <span className="text-3xl font-bold text-primary">{completionRate}%</span>
           </div>
           <div className="h-2.5 rounded-full bg-muted overflow-hidden">
             <motion.div
@@ -201,30 +201,21 @@ export default function ProgressPage() {
           <h2 className="text-base font-semibold text-foreground">Per Person</h2>
         </div>
         <div className="overflow-x-auto">
-          <table className="w-full text-sm text-left min-w-[600px]">
+          <table className="w-full text-sm text-left min-w-[640px]">
             <thead>
               <tr className="border-b border-border">
-                <th className="px-4 py-3 text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                  Discord ID
-                </th>
-                <th className="px-4 py-3 text-xs font-medium text-muted-foreground uppercase tracking-wider text-right">
-                  Completed
-                </th>
-                <th className="px-4 py-3 text-xs font-medium text-muted-foreground uppercase tracking-wider text-right">
-                  Pending
-                </th>
-                <th className="px-4 py-3 text-xs font-medium text-muted-foreground uppercase tracking-wider text-right">
-                  Overdue
-                </th>
-                <th className="px-4 py-3 text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                  Oldest Overdue Task
-                </th>
+                <th className="px-4 py-3 text-xs font-medium text-muted-foreground uppercase tracking-wider">Member</th>
+                <th className="px-4 py-3 text-xs font-medium text-muted-foreground uppercase tracking-wider">Team</th>
+                <th className="px-4 py-3 text-xs font-medium text-muted-foreground uppercase tracking-wider text-right">Completed</th>
+                <th className="px-4 py-3 text-xs font-medium text-muted-foreground uppercase tracking-wider text-right">Pending</th>
+                <th className="px-4 py-3 text-xs font-medium text-muted-foreground uppercase tracking-wider text-right">Overdue</th>
+                <th className="px-4 py-3 text-xs font-medium text-muted-foreground uppercase tracking-wider">Oldest Overdue</th>
               </tr>
             </thead>
             <tbody>
               {perPerson.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="px-4 py-16 text-center">
+                  <td colSpan={6} className="px-4 py-16 text-center">
                     <div className="flex flex-col items-center gap-2">
                       <BarChart2 size={40} className="text-muted-foreground/30" />
                       <p className="text-sm font-medium text-muted-foreground">No data yet</p>
@@ -233,45 +224,34 @@ export default function ProgressPage() {
                   </td>
                 </tr>
               ) : (
-                perPerson.map((p) => (
-                  <tr
-                    key={p.id}
-                    className="border-b border-border last:border-none hover:bg-muted/30 transition-colors"
-                  >
-                    <td className="px-4 py-4 font-mono text-xs text-foreground">
-                      {p.id}
-                    </td>
-                    <td className="px-4 py-4 text-right text-green-400 font-medium">
-                      {p.completed}
-                    </td>
-                    <td className="px-4 py-4 text-right text-muted-foreground">
-                      {p.pending}
-                    </td>
-                    <td className="px-4 py-4 text-right">
-                      <span
-                        className={
-                          p.overdue > 0
-                            ? "text-red-400 font-medium"
-                            : "text-muted-foreground"
-                        }
-                      >
-                        {p.overdue}
-                      </span>
-                    </td>
-                    <td className="px-4 py-4 text-xs text-muted-foreground max-w-[200px] truncate">
-                      {p.oldestOverdue ? (
-                        <>
-                          {p.oldestOverdue.task_name}{" "}
-                          <span className="text-red-400">
-                            ({formatDate(p.oldestOverdue.due_date)})
-                          </span>
-                        </>
-                      ) : (
-                        "—"
-                      )}
-                    </td>
-                  </tr>
-                ))
+                perPerson.map((p) => {
+                  const member = memberMap.get(p.id);
+                  return (
+                    <tr key={p.id} className="border-b border-border last:border-none hover:bg-muted/30 transition-colors">
+                      <td className="px-4 py-4">
+                        <p className="text-xs font-medium text-foreground">{member?.display_name || p.id}</p>
+                        {member?.display_name && (
+                          <p className="text-xs text-muted-foreground font-mono mt-0.5">{p.id}</p>
+                        )}
+                      </td>
+                      <td className="px-4 py-4">
+                        {member?.team ? <TeamBadge team={member.team} /> : <span className="text-muted-foreground">—</span>}
+                      </td>
+                      <td className="px-4 py-4 text-right text-green-400 font-medium">{p.completed}</td>
+                      <td className="px-4 py-4 text-right text-muted-foreground">{p.pending}</td>
+                      <td className="px-4 py-4 text-right">
+                        <span className={p.overdue > 0 ? "text-red-400 font-medium" : "text-muted-foreground"}>
+                          {p.overdue}
+                        </span>
+                      </td>
+                      <td className="px-4 py-4 text-xs text-muted-foreground max-w-[200px] truncate">
+                        {p.oldestOverdue ? (
+                          <>{p.oldestOverdue.task_name}{" "}<span className="text-red-400">({formatDate(p.oldestOverdue.due_date)})</span></>
+                        ) : "—"}
+                      </td>
+                    </tr>
+                  );
+                })
               )}
             </tbody>
           </table>
@@ -281,9 +261,7 @@ export default function ProgressPage() {
       {/* Upcoming deadlines */}
       <div className="bg-card border border-border rounded-xl shadow-sm overflow-hidden">
         <div className="px-6 py-4 border-b border-border">
-          <h2 className="text-base font-semibold text-foreground">
-            Upcoming Deadlines
-          </h2>
+          <h2 className="text-base font-semibold text-foreground">Upcoming Deadlines</h2>
         </div>
         <div className="divide-y divide-border">
           {upcoming.length === 0 ? (
@@ -294,24 +272,17 @@ export default function ProgressPage() {
             </div>
           ) : (
             upcoming.map((t) => (
-              <div
-                key={t.id}
-                className="px-6 py-4 flex items-center justify-between hover:bg-muted/30 transition-colors"
-              >
+              <div key={t.id} className="px-6 py-4 flex items-center justify-between hover:bg-muted/30 transition-colors">
                 <div>
-                  <p className="text-sm font-medium text-foreground">
-                    {t.task_name}
-                  </p>
+                  <div className="flex items-center gap-2">
+                    <p className="text-sm font-medium text-foreground">{t.task_name}</p>
+                    {t.team && <TeamBadge team={t.team} />}
+                  </div>
                   <p className="text-xs text-muted-foreground font-mono mt-0.5">
-                    {t.assignee_id}
+                    {memberMap.get(t.assignee_id)?.display_name || t.assignee_id}
                   </p>
                 </div>
-                <span
-                  className={cn(
-                    "text-xs px-2.5 py-1 rounded-full font-medium",
-                    dueDateBadgeClass(t)
-                  )}
-                >
+                <span className={cn("text-xs px-2.5 py-1 rounded-full font-medium", dueDateBadgeClass(t))}>
                   {formatDate(t.due_date)}
                 </span>
               </div>

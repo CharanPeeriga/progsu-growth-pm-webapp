@@ -54,7 +54,7 @@ export const suite: TestSuite = {
         if (!serverAvailable) throw new Error(`Dev server not running at ${DEV_SERVER}`);
         let threw = false;
         try {
-          await insertTask({ assignee_id: '', task_name: 'Valid Name', due_date: null, status: 'todo', guild_id: GUILD_ID });
+          await insertTask({ assignee_id: '', task_name: 'Valid Name', due_date: null, status: 'todo', team: 'growth', collaborator_ids: [], guild_id: GUILD_ID });
         } catch {
           threw = true;
         }
@@ -68,7 +68,7 @@ export const suite: TestSuite = {
         if (!serverAvailable) throw new Error(`Dev server not running at ${DEV_SERVER}`);
         let threw = false;
         try {
-          await insertTask({ assignee_id: 'some-user', task_name: '', due_date: null, status: 'todo', guild_id: GUILD_ID });
+          await insertTask({ assignee_id: 'some-user', task_name: '', due_date: null, status: 'todo', team: 'growth', collaborator_ids: [], guild_id: GUILD_ID });
         } catch {
           threw = true;
         }
@@ -81,11 +81,13 @@ export const suite: TestSuite = {
       async fn() {
         if (!serverAvailable) throw new Error(`Dev server not running at ${DEV_SERVER}`);
         assert(!!GUILD_ID, '❌ NEXT_PUBLIC_DISCORD_GUILD_ID is not set in .env.local — tasks will never appear in the UI');
-        const task = await insertTask({
+        const { task } = await insertTask({
           assignee_id: 'test-user-c',
           task_name: 'Empty date test',
           due_date: '' as unknown as null, // simulate unfilled date input
           status: 'todo',
+          team: 'growth',
+          collaborator_ids: [],
           guild_id: GUILD_ID,
         });
         taskIds.push(task.id);
@@ -101,17 +103,19 @@ export const suite: TestSuite = {
           !!GUILD_ID,
           '❌ NEXT_PUBLIC_DISCORD_GUILD_ID is not set in .env.local — tasks will never appear in the UI'
         );
-        const task = await insertTask({
+        const { task } = await insertTask({
           assignee_id: 'test-user-d',
           task_name: 'Guild filter test',
           due_date: addDays(10),
           status: 'todo',
+          team: 'growth',
+          collaborator_ids: [],
           guild_id: GUILD_ID,
         });
         taskIds.push(task.id);
         assert(task.guild_id === GUILD_ID, `Returned task has wrong guild_id: '${task.guild_id}'`);
 
-        const tasks = await fetchAllTasks(GUILD_ID);
+        const tasks = await fetchAllTasks();
         const found = tasks.some((t) => t.id === task.id);
         assert(found, `Inserted task id=${task.id} not returned by fetchAllTasks — check RLS SELECT policy`);
       },
@@ -158,7 +162,7 @@ export const suite: TestSuite = {
         taskIds.push(rightId); // cleanup via admin at end
 
         try {
-          const tasks = await fetchAllTasks(GUILD_ID);
+          const tasks = await fetchAllTasks();
           const hasWrong = tasks.some((t) => t.id === wrongId);
           assert(!hasWrong, `fetchAllTasks returned a task from the wrong guild (id=${wrongId})`);
         } finally {
@@ -219,7 +223,7 @@ export const suite: TestSuite = {
         await deleteTask(id);
 
         // fetchAllTasks must not throw even if result set is now smaller
-        const tasks = await fetchAllTasks(GUILD_ID);
+        const tasks = await fetchAllTasks();
         assert(Array.isArray(tasks), 'fetchAllTasks must return an array');
         const stillThere = tasks.some((t) => t.id === id);
         assert(!stillThere, `Deleted task id=${id} still appears in fetchAllTasks`);

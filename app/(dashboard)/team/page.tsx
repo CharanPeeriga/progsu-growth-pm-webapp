@@ -3,21 +3,46 @@
 import { useState, useEffect, useMemo, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
-import { Users, ChevronDown, ChevronRight, UserPlus, Trash2 } from "lucide-react";
+import { Users, ChevronDown, ChevronRight, UserPlus, Trash2, Shield } from "lucide-react";
 import { toast } from "sonner";
 import {
   fetchAllTasks,
   fetchTeamMembers,
   addTeamMember,
   removeTeamMember,
+  fetchVPRoles,
+  addVPRole,
+  removeVPRole,
 } from "@/lib/supabase";
-import type { DBTask, TeamMember } from "@/lib/types";
+import type { DBTask, TeamMember, TeamName, VPRole } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import AnimatedDropdown from "@/components/ui/animated-dropdown";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
+import { TeamBadge, teamTabClass, TEAM_LABELS } from "@/components/ui/team-badge";
 
 const GUILD_ID = process.env.NEXT_PUBLIC_DISCORD_GUILD_ID ?? "";
+
+const TEAM_FILTERS = [
+  { value: "all" as const, label: "All" },
+  { value: "growth" as const, label: "Growth" },
+  { value: "tech" as const, label: "Tech" },
+  { value: "operations" as const, label: "Operations" },
+];
+
+const TEAM_OPTIONS = [
+  { value: "growth", label: "Growth" },
+  { value: "tech", label: "Tech" },
+  { value: "operations", label: "Operations" },
+];
 
 const containerVariants = {
   hidden: { opacity: 0 },
@@ -25,11 +50,7 @@ const containerVariants = {
 };
 const itemVariants = {
   hidden: { opacity: 0, y: 14 },
-  visible: {
-    opacity: 1,
-    y: 0,
-    transition: { type: "spring" as const, stiffness: 100, damping: 15 },
-  },
+  visible: { opacity: 1, y: 0, transition: { type: "spring" as const, stiffness: 100, damping: 15 } },
 };
 
 function isOverdue(t: DBTask): boolean {
@@ -43,21 +64,32 @@ export default function TeamPage() {
   const router = useRouter();
   const [tasks, setTasks] = useState<DBTask[]>([]);
   const [members, setMembers] = useState<TeamMember[]>([]);
+  const [vpRoles, setVpRoles] = useState<VPRole[]>([]);
   const [loading, setLoading] = useState(true);
   const [rosterExpanded, setRosterExpanded] = useState(false);
+  const [teamFilter, setTeamFilter] = useState<"all" | TeamName>("all");
 
   const [newUserId, setNewUserId] = useState("");
   const [newDisplayName, setNewDisplayName] = useState("");
+  const [newMemberTeam, setNewMemberTeam] = useState<TeamName>("growth");
   const [adding, setAdding] = useState(false);
+
+  // VP form state
+  const [vpUserId, setVpUserId] = useState("");
+  const [vpTeam, setVpTeam] = useState<TeamName>("growth");
+  const [settingVP, setSettingVP] = useState(false);
+  const [removingVP, setRemovingVP] = useState<VPRole | null>(null);
 
   const loadAll = useCallback(async () => {
     try {
-      const [t, m] = await Promise.all([
-        fetchAllTasks(GUILD_ID),
+      const [t, m, vp] = await Promise.all([
+        fetchAllTasks(),
         fetchTeamMembers(GUILD_ID),
+        fetchVPRoles(),
       ]);
       setTasks(t);
       setMembers(m);
+      setVpRoles(vp);
     } catch {
       toast.error("Failed to load team data.");
     } finally {
@@ -65,9 +97,22 @@ export default function TeamPage() {
     }
   }, []);
 
-  useEffect(() => {
-    loadAll();
-  }, [loadAll]);
+  useEffect(() => { loadAll(); }, [loadAll]);
+
+  const memberMap = useMemo(
+    () => new Map(members.map((m) => [m.user_id, m])),
+    [members]
+  );
+
+  const filteredMembers = useMemo(() => {
+    if (teamFilter === "all") return members;
+    return members.filter((m) => m.team === teamFilter);
+  }, [members, teamFilter]);
+
+  const filteredTasks = useMemo(() => {
+    if (teamFilter === "all") return tasks;
+    return tasks.filter((t) => t.team === teamFilter);
+  }, [tasks, teamFilter]);
 
   const memberUserIds = useMemo(
     () => new Set(members.map((m) => m.user_id)),
@@ -75,14 +120,11 @@ export default function TeamPage() {
   );
 
   const memberStats = useMemo(() => {
-    const map = new Map<
-      string,
-      { completed: number; pending: number; inReview: number; overdue: number }
-    >();
-    for (const m of members) {
+    const map = new Map<string, { completed: number; pending: number; inReview: number; overdue: number }>();
+    for (const m of filteredMembers) {
       map.set(m.user_id, { completed: 0, pending: 0, inReview: 0, overdue: 0 });
     }
-    for (const t of tasks) {
+    for (const t of filteredTasks) {
       if (!map.has(t.assignee_id)) continue;
       const s = map.get(t.assignee_id)!;
       if (t.status === "done") s.completed++;
@@ -91,7 +133,7 @@ export default function TeamPage() {
       else s.pending++;
     }
     return map;
-  }, [members, tasks]);
+  }, [filteredMembers, filteredTasks]);
 
   const tasksWithoutMember = useMemo(
     () => tasks.filter((t) => !memberUserIds.has(t.assignee_id)),
@@ -106,27 +148,25 @@ export default function TeamPage() {
     return Array.from(map.entries()).map(([id, count]) => ({ id, count }));
   }, [tasksWithoutMember]);
 
-  const totalTasks = tasks.length;
-  const totalCompleted = tasks.filter((t) => t.status === "done").length;
-  const completionRate =
-    totalTasks > 0 ? Math.round((totalCompleted / totalTasks) * 100) : 0;
+  const totalTasks = filteredTasks.length;
+  const totalCompleted = filteredTasks.filter((t) => t.status === "done").length;
+  const completionRate = totalTasks > 0 ? Math.round((totalCompleted / totalTasks) * 100) : 0;
 
   const handleAddMember = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newUserId.trim()) return;
     setAdding(true);
     try {
-      await addTeamMember(GUILD_ID, newUserId.trim(), newDisplayName.trim());
-      toast.success("✅ Member added");
+      await addTeamMember(GUILD_ID, newUserId.trim(), newDisplayName.trim(), newMemberTeam);
+      const addedName = newDisplayName.trim() || newUserId.trim();
+      toast.success(`✅ ${addedName} added to the progsu Task Management System`);
       setNewUserId("");
       setNewDisplayName("");
+      setNewMemberTeam("growth");
       await loadAll();
     } catch (err) {
       const msg = err instanceof Error ? err.message : "";
-      if (
-        msg.toLowerCase().includes("duplicate") ||
-        msg.toLowerCase().includes("unique")
-      ) {
+      if (msg.toLowerCase().includes("duplicate") || msg.toLowerCase().includes("unique")) {
         toast.warning("⚠️ Already on the team");
       } else {
         toast.error(`Failed to add member: ${msg}`);
@@ -142,28 +182,59 @@ export default function TeamPage() {
       toast.success("Removed from team");
       await loadAll();
     } catch (err) {
-      const msg = err instanceof Error ? err.message : "Unknown error";
-      toast.error(`Failed to remove: ${msg}`);
+      toast.error(`Failed to remove: ${err instanceof Error ? err.message : "Unknown error"}`);
     }
   };
 
   const handleAddUnregistered = async (userId: string) => {
     try {
-      await addTeamMember(GUILD_ID, userId, "");
+      await addTeamMember(GUILD_ID, userId, "", "growth");
       toast.success("✅ Member added");
       await loadAll();
     } catch (err) {
       const msg = err instanceof Error ? err.message : "";
-      if (
-        msg.toLowerCase().includes("duplicate") ||
-        msg.toLowerCase().includes("unique")
-      ) {
+      if (msg.toLowerCase().includes("duplicate") || msg.toLowerCase().includes("unique")) {
         toast.warning("⚠️ Already on the team");
       } else {
         toast.error(`Failed to add: ${msg}`);
       }
     }
   };
+
+  const handleSetVP = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!vpUserId) { toast.error("Select a member"); return; }
+    setSettingVP(true);
+    try {
+      await addVPRole(vpUserId, vpTeam);
+      const name = memberMap.get(vpUserId)?.display_name || vpUserId;
+      toast.success(`✅ ${name} set as VP of ${TEAM_LABELS[vpTeam]} team`);
+      setVpUserId("");
+      await loadAll();
+    } catch (err) {
+      toast.error(`Failed: ${err instanceof Error ? err.message : "Unknown error"}`);
+    } finally {
+      setSettingVP(false);
+    }
+  };
+
+  const handleRemoveVP = async () => {
+    if (!removingVP) return;
+    try {
+      await removeVPRole(removingVP.user_id);
+      toast.success("VP role removed");
+      setRemovingVP(null);
+      await loadAll();
+    } catch (err) {
+      toast.error(`Failed: ${err instanceof Error ? err.message : "Unknown error"}`);
+    }
+  };
+
+  const vpByTeam = useMemo(() => {
+    const map = new Map<TeamName, VPRole>();
+    for (const vp of vpRoles) map.set(vp.team, vp);
+    return map;
+  }, [vpRoles]);
 
   return (
     <div className="space-y-6 page-fade-in">
@@ -174,20 +245,38 @@ export default function TeamPage() {
         </p>
       </div>
 
+      {/* Team filter tabs */}
+      <div className="flex items-center gap-1 bg-muted rounded-lg p-1 w-fit">
+        {TEAM_FILTERS.map(({ value, label }) => (
+          <button
+            key={value}
+            onClick={() => setTeamFilter(value)}
+            className={cn(
+              "px-3 py-1.5 rounded-md text-sm font-medium transition-colors",
+              teamFilter === value && value === "all"
+                ? "bg-primary text-primary-foreground"
+                : teamFilter === value
+                ? teamTabClass(value as TeamName, true)
+                : "text-muted-foreground hover:text-foreground"
+            )}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
       {/* Add Member */}
       <div className="bg-card border border-border rounded-xl p-6 shadow-sm">
-        <h2 className="text-base font-semibold text-foreground mb-4 flex items-center gap-2">
-          <UserPlus size={16} />
-          Add Member
-        </h2>
-        <form
-          onSubmit={handleAddMember}
-          className="flex flex-col sm:flex-row gap-3"
-        >
-          <div className="flex-1">
-            <Label className="text-xs text-muted-foreground mb-1.5 block">
-              Discord User ID *
-            </Label>
+        <div className="mb-4">
+          <h2 className="text-base font-semibold text-foreground flex items-center gap-2">
+            <UserPlus size={16} />
+            Add Member
+          </h2>
+          <p className="text-sm text-muted-foreground mt-0.5">Add someone to the progsu Task Management System</p>
+        </div>
+        <form onSubmit={handleAddMember} className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+          <div>
+            <Label className="text-xs text-muted-foreground mb-1.5 block">Discord User ID *</Label>
             <Input
               placeholder="e.g. 123456789012345678"
               value={newUserId}
@@ -195,20 +284,26 @@ export default function TeamPage() {
               required
             />
           </div>
-          <div className="flex-1">
-            <Label className="text-xs text-muted-foreground mb-1.5 block">
-              Display Name (optional)
-            </Label>
+          <div>
+            <Label className="text-xs text-muted-foreground mb-1.5 block">Display Name (optional)</Label>
             <Input
               placeholder="e.g. John Doe"
               value={newDisplayName}
               onChange={(e) => setNewDisplayName(e.target.value)}
             />
           </div>
+          <div>
+            <Label className="text-xs text-muted-foreground mb-1.5 block">Team</Label>
+            <AnimatedDropdown
+              items={TEAM_OPTIONS}
+              value={newMemberTeam}
+              onSelect={(v) => setNewMemberTeam(v as TeamName)}
+            />
+          </div>
           <div className="flex items-end">
             <Button
               type="submit"
-              className="h-10 px-5 bg-primary text-primary-foreground hover:bg-primary/90 font-medium"
+              className="h-10 w-full px-5 bg-primary text-primary-foreground hover:bg-primary/90 font-medium"
               disabled={adding}
             >
               {adding ? "Adding…" : "Add Member"}
@@ -220,7 +315,7 @@ export default function TeamPage() {
       {/* Summary */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         {[
-          { label: "Total Members", value: members.length },
+          { label: "Total Members", value: filteredMembers.length },
           { label: "Total Tasks", value: totalTasks },
           { label: "Completion Rate", value: `${completionRate}%` },
         ].map(({ label, value }) => (
@@ -239,10 +334,8 @@ export default function TeamPage() {
 
       {/* Member cards */}
       {loading ? (
-        <div className="text-muted-foreground text-sm py-16 text-center">
-          Loading…
-        </div>
-      ) : members.length === 0 ? (
+        <div className="text-muted-foreground text-sm py-16 text-center">Loading…</div>
+      ) : filteredMembers.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-24 text-muted-foreground">
           <Users size={40} className="mb-3 text-muted-foreground/30" />
           <p className="text-sm font-medium text-muted-foreground">No team members</p>
@@ -255,54 +348,35 @@ export default function TeamPage() {
           animate="visible"
           className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4"
         >
-          {members.map((m) => {
-            const stats = memberStats.get(m.user_id) ?? {
-              completed: 0,
-              pending: 0,
-              inReview: 0,
-              overdue: 0,
-            };
+          {filteredMembers.map((m) => {
+            const stats = memberStats.get(m.user_id) ?? { completed: 0, pending: 0, inReview: 0, overdue: 0 };
             return (
               <motion.div
                 key={m.id}
                 variants={itemVariants}
                 className="bg-card border border-border rounded-xl p-6 shadow-sm hover:bg-muted/30 transition-colors"
               >
-                <p className="font-medium text-sm text-foreground truncate mb-0.5">
-                  {m.display_name || m.user_id}
-                </p>
-                <p className="text-xs text-muted-foreground font-mono mb-4 truncate">
-                  {m.user_id}
-                </p>
+                <div className="flex items-start justify-between mb-0.5">
+                  <p className="font-medium text-sm text-foreground truncate">{m.display_name || m.user_id}</p>
+                  {m.team && <TeamBadge team={m.team} className="ml-2 shrink-0" />}
+                </div>
+                <p className="text-xs text-muted-foreground font-mono mb-4 truncate">{m.user_id}</p>
                 <div className="space-y-1.5 text-sm mb-5">
                   <div className="flex items-center justify-between">
                     <span className="text-muted-foreground">✅ Completed</span>
-                    <span className="text-green-400 font-medium">
-                      {stats.completed}
-                    </span>
+                    <span className="text-green-400 font-medium">{stats.completed}</span>
                   </div>
                   <div className="flex items-center justify-between">
                     <span className="text-muted-foreground">🔵 Pending</span>
-                    <span className="text-foreground font-medium">
-                      {stats.pending}
-                    </span>
+                    <span className="text-foreground font-medium">{stats.pending}</span>
                   </div>
                   <div className="flex items-center justify-between">
                     <span className="text-muted-foreground">⏳ In Review</span>
-                    <span className="text-purple-400 font-medium">
-                      {stats.inReview}
-                    </span>
+                    <span className="text-purple-400 font-medium">{stats.inReview}</span>
                   </div>
                   <div className="flex items-center justify-between">
                     <span className="text-muted-foreground">⚠️ Overdue</span>
-                    <span
-                      className={cn(
-                        "font-medium",
-                        stats.overdue > 0
-                          ? "text-red-400"
-                          : "text-muted-foreground"
-                      )}
-                    >
+                    <span className={cn("font-medium", stats.overdue > 0 ? "text-red-400" : "text-muted-foreground")}>
                       {stats.overdue}
                     </span>
                   </div>
@@ -312,11 +386,7 @@ export default function TeamPage() {
                     variant="outline"
                     size="sm"
                     className="flex-1 border-border text-primary hover:bg-primary/10 hover:border-primary"
-                    onClick={() =>
-                      router.push(
-                        `/tasks?search=${encodeURIComponent(m.user_id)}`
-                      )
-                    }
+                    onClick={() => router.push(`/tasks?search=${encodeURIComponent(m.user_id)}`)}
                   >
                     View Tasks
                   </Button>
@@ -343,28 +413,17 @@ export default function TeamPage() {
             className="w-full flex items-center justify-between px-6 py-4 text-left hover:bg-muted/30 transition-colors"
           >
             <span className="text-sm font-medium text-muted-foreground">
-              {tasksWithoutMember.length} task
-              {tasksWithoutMember.length !== 1 ? "s" : ""} assigned to people
-              not on the official roster
+              {tasksWithoutMember.length} task{tasksWithoutMember.length !== 1 ? "s" : ""} assigned to people not on the official roster
             </span>
-            {rosterExpanded ? (
-              <ChevronDown size={16} className="text-muted-foreground" />
-            ) : (
-              <ChevronRight size={16} className="text-muted-foreground" />
-            )}
+            {rosterExpanded ? <ChevronDown size={16} className="text-muted-foreground" /> : <ChevronRight size={16} className="text-muted-foreground" />}
           </button>
           {rosterExpanded && (
             <div className="border-t border-border divide-y divide-border">
               {uniqueUnregistered.map(({ id, count }) => (
-                <div
-                  key={id}
-                  className="flex items-center justify-between px-6 py-3"
-                >
+                <div key={id} className="flex items-center justify-between px-6 py-3">
                   <div>
                     <p className="text-sm font-mono text-foreground">{id}</p>
-                    <p className="text-xs text-muted-foreground mt-0.5">
-                      {count} task{count !== 1 ? "s" : ""}
-                    </p>
+                    <p className="text-xs text-muted-foreground mt-0.5">{count} task{count !== 1 ? "s" : ""}</p>
                   </div>
                   <Button
                     size="sm"
@@ -380,6 +439,106 @@ export default function TeamPage() {
           )}
         </div>
       )}
+
+      {/* VP Roles section */}
+      <div className="bg-card border border-border rounded-xl p-6 shadow-sm space-y-6">
+        <h2 className="text-base font-semibold text-foreground flex items-center gap-2">
+          <Shield size={16} />
+          VP Roles
+        </h2>
+
+        {/* Current VPs per team */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          {(["growth", "tech", "operations"] as TeamName[]).map((team) => {
+            const vp = vpByTeam.get(team);
+            const member = vp ? memberMap.get(vp.user_id) : null;
+            return (
+              <div key={team} className="bg-muted/30 border border-border rounded-lg p-4">
+                <div className="flex items-center justify-between mb-2">
+                  <TeamBadge team={team} />
+                  <span className="text-xs text-muted-foreground">VP</span>
+                </div>
+                {vp ? (
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm font-medium text-foreground">{member?.display_name || vp.user_id}</p>
+                      {member?.display_name && (
+                        <p className="text-xs text-muted-foreground font-mono mt-0.5 truncate">{vp.user_id}</p>
+                      )}
+                    </div>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="h-7 text-xs ml-2 border-destructive/50 text-destructive hover:bg-destructive/10 hover:border-destructive"
+                      onClick={() => setRemovingVP(vp)}
+                    >
+                      Remove
+                    </Button>
+                  </div>
+                ) : (
+                  <p className="text-sm text-muted-foreground">No VP set</p>
+                )}
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Set VP form */}
+        <form onSubmit={handleSetVP} className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <div>
+            <Label className="text-xs text-muted-foreground mb-1.5 block">Member</Label>
+            <AnimatedDropdown
+              items={members.map((m) => ({ label: m.display_name || m.user_id, value: m.user_id }))}
+              value={vpUserId || undefined}
+              onSelect={setVpUserId}
+              placeholder="Select member"
+            />
+          </div>
+          <div>
+            <Label className="text-xs text-muted-foreground mb-1.5 block">Team</Label>
+            <AnimatedDropdown
+              items={TEAM_OPTIONS}
+              value={vpTeam}
+              onSelect={(v) => setVpTeam(v as TeamName)}
+            />
+          </div>
+          <div className="flex items-end">
+            <Button
+              type="submit"
+              className="h-10 w-full bg-primary text-primary-foreground hover:bg-primary/90 font-medium"
+              disabled={settingVP}
+            >
+              {settingVP ? "Setting…" : "Set VP"}
+            </Button>
+          </div>
+        </form>
+      </div>
+
+      {/* Remove VP confirmation dialog */}
+      <Dialog open={!!removingVP} onOpenChange={(open) => !open && setRemovingVP(null)}>
+        <DialogContent className="bg-card border border-border">
+          <DialogHeader>
+            <DialogTitle className="text-base font-semibold">Remove VP role?</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground -mt-1">
+            {removingVP && (
+              <>
+                Remove {memberMap.get(removingVP.user_id)?.display_name || removingVP.user_id} as VP of the{" "}
+                <span className="font-medium text-foreground">{TEAM_LABELS[removingVP.team]}</span> team?
+              </>
+            )}
+          </p>
+          <DialogFooter className="gap-2 sm:gap-2 border-0 bg-transparent p-0 pt-2">
+            <Button variant="outline" className="h-9" onClick={() => setRemovingVP(null)}>Cancel</Button>
+            <Button
+              className="h-9 bg-destructive/90 text-white hover:bg-destructive"
+              onClick={handleRemoveVP}
+            >
+              Remove
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

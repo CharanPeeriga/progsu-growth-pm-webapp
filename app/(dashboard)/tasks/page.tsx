@@ -3,10 +3,17 @@
 import { useState, useEffect, useMemo, useCallback, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import { motion } from "framer-motion";
-import { Plus, Search } from "lucide-react";
+import { Plus, Search, X } from "lucide-react";
 import { toast } from "sonner";
-import { fetchAllTasks, insertTask, updateTask, deleteTask, fetchTeamMembers } from "@/lib/supabase";
-import type { DBTask, NewTask, TaskStatus, TeamMember } from "@/lib/types";
+import {
+  fetchAllTasks,
+  insertTask,
+  updateTask,
+  deleteTask,
+  fetchTeamMembers,
+  fetchAllCollaborators,
+} from "@/lib/supabase";
+import type { DBTask, NewTask, TaskStatus, TeamMember, TeamName, TaskCollaborator } from "@/lib/types";
 import { TaskList, type Task } from "@/components/ui/task-list";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -33,6 +40,7 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
+import { TeamBadge, teamTabClass } from "@/components/ui/team-badge";
 
 const GUILD_ID = process.env.NEXT_PUBLIC_DISCORD_GUILD_ID ?? "";
 
@@ -46,14 +54,23 @@ const filterLabels: Record<FilterStatus, string> = {
   done: "Done",
 };
 
+const TEAM_FILTERS = [
+  { value: "all" as const, label: "All Teams" },
+  { value: "growth" as const, label: "Growth" },
+  { value: "tech" as const, label: "Tech" },
+  { value: "operations" as const, label: "Operations" },
+];
+
+const TEAM_OPTIONS = [
+  { value: "growth", label: "Growth" },
+  { value: "tech", label: "Tech" },
+  { value: "operations", label: "Operations" },
+];
+
 function formatDate(dateStr: string | null): string {
   if (!dateStr) return "No due date";
   const d = new Date(dateStr + "T12:00:00");
-  return d.toLocaleDateString("en-US", {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  });
+  return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
 }
 
 function dbTaskToTask(t: DBTask, memberMap: Map<string, string>): Task {
@@ -92,42 +109,53 @@ function isOverdue(t: DBTask): boolean {
   return new Date(t.due_date + "T00:00:00") < now;
 }
 
-const defaultNewTask: NewTask = {
+type NewTaskWithTeam = NewTask & { team: TeamName; collaborator_ids: string[] };
+
+const defaultNewTask: NewTaskWithTeam = {
   assignee_id: "",
   task_name: "",
   due_date: null,
   status: "todo",
+  team: "growth",
+  collaborator_ids: [],
 };
 
 function TasksPageContent() {
   const searchParams = useSearchParams();
   const [tasks, setTasks] = useState<DBTask[]>([]);
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
+  const [collaborators, setCollaborators] = useState<TaskCollaborator[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadingMembers, setLoadingMembers] = useState(true);
   const [search, setSearch] = useState(searchParams.get("search") ?? "");
   const [filter, setFilter] = useState<FilterStatus>("all");
+  const [teamFilter, setTeamFilter] = useState<"all" | TeamName>("all");
 
   const [assignSheetOpen, setAssignSheetOpen] = useState(false);
   const [editSheetOpen, setEditSheetOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [rejectDialogOpen, setRejectDialogOpen] = useState(false);
 
-  const [newTask, setNewTask] = useState<NewTask>(defaultNewTask);
+  const [newTask, setNewTask] = useState<NewTaskWithTeam>(defaultNewTask);
   const [editingTask, setEditingTask] = useState<DBTask | null>(null);
   const [deletingTask, setDeletingTask] = useState<DBTask | null>(null);
   const [rejectingTask, setRejectingTask] = useState<Task | null>(null);
   const [rejectionReason, setRejectionReason] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
+  // Collaborator picker state for Assign panel
+  const [collabPickerValue, setCollabPickerValue] = useState("");
+
   const load = useCallback(async () => {
     try {
-      const [tasksData, membersData] = await Promise.all([
-        fetchAllTasks(GUILD_ID),
+      const [tasksData, membersData, collabData] = await Promise.all([
+        fetchAllTasks(),
         fetchTeamMembers(GUILD_ID),
+        fetchAllCollaborators(),
       ]);
       setTasks(tasksData);
       setTeamMembers(membersData);
+      setCollaborators(collabData);
     } catch (err) {
       console.error("Failed to load tasks/members:", err);
       toast.error("Failed to load tasks.");
@@ -140,19 +168,29 @@ function TasksPageContent() {
     load().finally(() => setLoadingMembers(false));
   }, [load]);
 
+  // Map task_id → collaborator list
+  const collabByTask = useMemo(() => {
+    const map = new Map<number, TaskCollaborator[]>();
+    for (const c of collaborators) {
+      const list = map.get(c.task_id) ?? [];
+      list.push(c);
+      map.set(c.task_id, list);
+    }
+    return map;
+  }, [collaborators]);
+
   const filtered = useMemo(() => {
     let list = tasks;
+    if (teamFilter !== "all") list = list.filter((t) => t.team === teamFilter);
     if (filter !== "all") list = list.filter((t) => t.status === filter);
     if (search.trim()) {
       const q = search.toLowerCase();
       list = list.filter(
-        (t) =>
-          t.task_name.toLowerCase().includes(q) ||
-          t.assignee_id.toLowerCase().includes(q)
+        (t) => t.task_name.toLowerCase().includes(q) || t.assignee_id.toLowerCase().includes(q)
       );
     }
     return list;
-  }, [tasks, filter, search]);
+  }, [tasks, teamFilter, filter, search]);
 
   const memberMap = useMemo(
     () => new Map(teamMembers.map((m) => [m.user_id, m.display_name ?? m.user_id])),
@@ -169,41 +207,45 @@ function TasksPageContent() {
     [filtered, memberMap]
   );
 
-  // Review banner count — always from full task list
   const reviewCount = useMemo(
     () => tasks.filter((t) => t.status === "review").length,
     [tasks]
   );
 
-  // Analytics from filtered view
-  const filteredDone = useMemo(
-    () => filtered.filter((t) => t.status === "done").length,
-    [filtered]
-  );
-  const filteredRate =
-    filtered.length > 0 ? Math.round((filteredDone / filtered.length) * 100) : 0;
-  const filteredReview = useMemo(
-    () => filtered.filter((t) => t.status === "review").length,
-    [filtered]
-  );
+  const filteredDone = useMemo(() => filtered.filter((t) => t.status === "done").length, [filtered]);
+  const filteredRate = filtered.length > 0 ? Math.round((filteredDone / filtered.length) * 100) : 0;
+  const filteredReview = useMemo(() => filtered.filter((t) => t.status === "review").length, [filtered]);
   const filteredOverdue = useMemo(() => filtered.filter(isOverdue).length, [filtered]);
 
   const handleAssign = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newTask.assignee_id) {
-      toast.error("Please select an assignee");
-      return;
-    }
-    if (!newTask.task_name.trim()) {
-      toast.error("Please enter a task name");
-      return;
-    }
+    if (!newTask.assignee_id) { toast.error("Please select an assignee"); return; }
+    if (!newTask.task_name.trim()) { toast.error("Please enter a task name"); return; }
     setSubmitting(true);
     try {
-      await insertTask({ ...newTask, guild_id: GUILD_ID });
+      const { task: inserted, notification } = await insertTask({ ...newTask, guild_id: GUILD_ID });
       toast.success("✅ Task assigned");
+
+      // Notification warnings
+      if (notification && typeof notification === "object") {
+        const n = notification as Record<string, unknown>;
+        const assigneeName = memberMap.get(inserted.assignee_id) ?? inserted.assignee_id;
+        if (n.method === "dm") {
+          toast.warning(
+            `⚠️ No reminder channel set for ${assigneeName}. They were notified via DM but may not receive it if DMs are disabled. Use /setchannel in Discord to set a channel for them.`,
+            { duration: 8000 }
+          );
+        } else if (n.notified === false) {
+          toast.error(
+            `❌ Could not notify ${assigneeName}. No reminder channel is set and their DMs are disabled. Use /setchannel in Discord to ensure they receive future assignments.`,
+            { duration: 10000 }
+          );
+        }
+      }
+
       setAssignSheetOpen(false);
       setNewTask(defaultNewTask);
+      setCollabPickerValue("");
       await load();
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Unknown error";
@@ -224,6 +266,7 @@ function TasksPageContent() {
         task_name: editingTask.task_name,
         due_date: editingTask.due_date,
         status: editingTask.status,
+        team: editingTask.team,
       });
       toast.success("✅ Task updated");
       setEditSheetOpen(false);
@@ -231,7 +274,6 @@ function TasksPageContent() {
       await load();
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Unknown error";
-      console.error("Edit task failed:", JSON.stringify(err, null, 2));
       toast.error(`❌ Failed to update task: ${msg}`);
     } finally {
       setSubmitting(false);
@@ -249,7 +291,6 @@ function TasksPageContent() {
       await load();
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Unknown error";
-      console.error("Delete task failed:", JSON.stringify(err, null, 2));
       toast.error(`❌ Failed to delete task: ${msg}`);
     } finally {
       setSubmitting(false);
@@ -260,18 +301,14 @@ function TasksPageContent() {
     if (!rejectingTask) return;
     setSubmitting(true);
     try {
-      await updateTask(rejectingTask.id, {
-        status: "in_progress",
-        rejection_reason: rejectionReason || null,
-      });
+      await updateTask(rejectingTask.id, { status: "in_progress", rejection_reason: rejectionReason || null });
       toast.success("↩️ Task sent back");
       setRejectDialogOpen(false);
       setRejectingTask(null);
       setRejectionReason("");
       await load();
     } catch (err) {
-      const msg = err instanceof Error ? err.message : "Unknown error";
-      toast.error(`❌ Failed to send back: ${msg}`);
+      toast.error(`❌ Failed to send back: ${err instanceof Error ? err.message : "Unknown error"}`);
     } finally {
       setSubmitting(false);
     }
@@ -280,10 +317,7 @@ function TasksPageContent() {
   const onEditTask = useCallback(
     (task: Task) => {
       const dbTask = tasks.find((t) => t.id === task.id);
-      if (dbTask) {
-        setEditingTask({ ...dbTask });
-        setEditSheetOpen(true);
-      }
+      if (dbTask) { setEditingTask({ ...dbTask }); setEditSheetOpen(true); }
     },
     [tasks]
   );
@@ -291,10 +325,7 @@ function TasksPageContent() {
   const onDeleteTask = useCallback(
     (task: Task) => {
       const dbTask = tasks.find((t) => t.id === task.id);
-      if (dbTask) {
-        setDeletingTask(dbTask);
-        setDeleteDialogOpen(true);
-      }
+      if (dbTask) { setDeletingTask(dbTask); setDeleteDialogOpen(true); }
     },
     [tasks]
   );
@@ -306,8 +337,7 @@ function TasksPageContent() {
         toast.success("✅ Task approved");
         await load();
       } catch (err) {
-        const msg = err instanceof Error ? err.message : "Unknown error";
-        toast.error(`Failed to approve: ${msg}`);
+        toast.error(`Failed to approve: ${err instanceof Error ? err.message : "Unknown error"}`);
       }
     },
     [load]
@@ -324,14 +354,7 @@ function TasksPageContent() {
       const dbTask = tasks.find((t) => t.id === task.id);
       const isResolved = dbTask ? memberIdSet.has(dbTask.assignee_id) : false;
       return (
-        <span
-          className={cn(
-            "block max-w-[140px] truncate text-xs",
-            isResolved
-              ? "text-foreground"
-              : "text-muted-foreground font-mono"
-          )}
-        >
+        <span className={cn("block max-w-[140px] truncate text-xs", isResolved ? "text-foreground" : "text-muted-foreground font-mono")}>
           {task.assignee}
         </span>
       );
@@ -343,17 +366,55 @@ function TasksPageContent() {
     (task: Task) => {
       const dbTask = tasks.find((t) => t.id === task.id);
       return (
-        <span
-          className={
-            dbTask ? getDueDateClass(dbTask) : "text-muted-foreground text-sm"
-          }
-        >
+        <span className={dbTask ? getDueDateClass(dbTask) : "text-muted-foreground text-sm"}>
           {task.dueDate}
         </span>
       );
     },
     [tasks]
   );
+
+  const renderTeam = useCallback(
+    (task: Task) => {
+      const dbTask = tasks.find((t) => t.id === task.id);
+      return dbTask?.team ? <TeamBadge team={dbTask.team} /> : <span className="text-muted-foreground">—</span>;
+    },
+    [tasks]
+  );
+
+  const renderCollaborators = useCallback(
+    (task: Task) => {
+      const collabs = collabByTask.get(task.id);
+      if (!collabs || collabs.length === 0) return <span className="text-muted-foreground text-xs">—</span>;
+      return (
+        <div className="flex flex-wrap gap-1">
+          {collabs.map((c) => (
+            <span
+              key={c.user_id}
+              className={cn(
+                "inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs border",
+                c.submitted
+                  ? "bg-green-950/60 text-green-400 border-green-900/40"
+                  : "bg-muted text-muted-foreground border-border"
+              )}
+            >
+              {memberMap.get(c.user_id) ?? c.user_id}
+              {c.submitted ? " ✅" : " ⏳"}
+            </span>
+          ))}
+        </div>
+      );
+    },
+    [collabByTask, memberMap]
+  );
+
+  // Collaborator options = members not already selected and not the assignee
+  const availableCollabOptions = useMemo(() => {
+    const selected = new Set(newTask.collaborator_ids);
+    return teamMembers
+      .filter((m) => !selected.has(m.user_id) && m.user_id !== newTask.assignee_id)
+      .map((m) => ({ label: m.display_name || m.user_id, value: m.user_id }));
+  }, [teamMembers, newTask.collaborator_ids, newTask.assignee_id]);
 
   return (
     <div className="space-y-6 page-fade-in">
@@ -391,36 +452,41 @@ function TasksPageContent() {
           { label: "Total Tasks", value: filtered.length },
           { label: "Completion Rate", value: `${filteredRate}%` },
           { label: "In Review", value: filteredReview },
-          {
-            label: "Overdue",
-            value: filteredOverdue,
-            danger: filteredOverdue > 0,
-          },
+          { label: "Overdue", value: filteredOverdue, danger: filteredOverdue > 0 },
         ].map(({ label, value, danger }) => (
-          <div
-            key={label}
-            className="bg-card border border-border rounded-xl p-4 shadow-sm"
-          >
+          <div key={label} className="bg-card border border-border rounded-xl p-4 shadow-sm">
             <p className="text-xs text-muted-foreground font-medium">{label}</p>
-            <p
-              className={cn(
-                "text-2xl font-bold mt-1",
-                danger ? "text-red-400" : "text-foreground"
-              )}
-            >
+            <p className={cn("text-2xl font-bold mt-1", danger ? "text-red-400" : "text-foreground")}>
               {value}
             </p>
           </div>
         ))}
       </div>
 
+      {/* Team filter tabs */}
+      <div className="flex items-center gap-1 bg-muted rounded-lg p-1 w-fit">
+        {TEAM_FILTERS.map(({ value, label }) => (
+          <button
+            key={value}
+            onClick={() => setTeamFilter(value)}
+            className={cn(
+              "px-3 py-1.5 rounded-md text-sm font-medium transition-colors",
+              teamFilter === value && value === "all"
+                ? "bg-primary text-primary-foreground"
+                : teamFilter === value
+                ? teamTabClass(value as TeamName, true)
+                : "text-muted-foreground hover:text-foreground"
+            )}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
       {/* Top bar */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3">
         <div className="relative max-w-xs w-full">
-          <Search
-            size={14}
-            className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground"
-          />
+          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
           <Input
             className="pl-9"
             placeholder="Search tasks or assignee…"
@@ -436,9 +502,7 @@ function TasksPageContent() {
               onClick={() => setFilter(f)}
               className={cn(
                 "px-3 py-1.5 rounded-md text-sm font-medium transition-colors",
-                filter === f
-                  ? "bg-primary text-primary-foreground"
-                  : "text-muted-foreground hover:text-foreground"
+                filter === f ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"
               )}
             >
               {filterLabels[f]}
@@ -473,6 +537,8 @@ function TasksPageContent() {
           onReject={onRejectTask}
           renderDueDate={renderDueDate}
           renderAssignee={renderAssignee}
+          renderTeam={renderTeam}
+          renderCollaborators={renderCollaborators}
           emptyTitle="No tasks found."
           emptySubtitle="Assign a task to get started"
         />
@@ -486,6 +552,14 @@ function TasksPageContent() {
           </SheetHeader>
           <form onSubmit={handleAssign} className="px-6 py-6 space-y-6">
             <div>
+              <Label className="text-sm font-medium text-muted-foreground mb-2 block">Team</Label>
+              <AnimatedDropdown
+                items={TEAM_OPTIONS}
+                value={newTask.team}
+                onSelect={(v) => setNewTask((p) => ({ ...p, team: v as TeamName }))}
+              />
+            </div>
+            <div>
               <Label className="text-sm font-medium text-muted-foreground mb-2 block">Assignee</Label>
               <AnimatedDropdown
                 items={teamMembers.map((m) => ({ label: m.display_name || m.user_id, value: m.user_id }))}
@@ -496,13 +570,42 @@ function TasksPageContent() {
               />
             </div>
             <div>
+              <Label className="text-sm font-medium text-muted-foreground mb-2 block">Collaborators</Label>
+              <AnimatedDropdown
+                items={availableCollabOptions}
+                value={collabPickerValue || undefined}
+                onSelect={(v) => {
+                  setNewTask((p) => ({ ...p, collaborator_ids: [...p.collaborator_ids, v] }));
+                  setCollabPickerValue("");
+                }}
+                placeholder="Add collaborator…"
+              />
+              {newTask.collaborator_ids.length > 0 && (
+                <div className="flex flex-wrap gap-1.5 mt-2">
+                  {newTask.collaborator_ids.map((uid) => (
+                    <span
+                      key={uid}
+                      className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs bg-muted border border-border text-foreground"
+                    >
+                      {memberMap.get(uid) ?? uid}
+                      <button
+                        type="button"
+                        onClick={() => setNewTask((p) => ({ ...p, collaborator_ids: p.collaborator_ids.filter((id) => id !== uid) }))}
+                        className="ml-0.5 text-muted-foreground hover:text-foreground"
+                      >
+                        <X size={11} />
+                      </button>
+                    </span>
+                  ))}
+                </div>
+              )}
+            </div>
+            <div>
               <Label className="text-sm font-medium text-muted-foreground mb-2 block">Task Name</Label>
               <Input
                 placeholder="Describe the task…"
                 value={newTask.task_name}
-                onChange={(e) =>
-                  setNewTask((p) => ({ ...p, task_name: e.target.value }))
-                }
+                onChange={(e) => setNewTask((p) => ({ ...p, task_name: e.target.value }))}
                 required
               />
             </div>
@@ -511,9 +614,7 @@ function TasksPageContent() {
               <Input
                 type="date"
                 value={newTask.due_date ?? ""}
-                onChange={(e) =>
-                  setNewTask((p) => ({ ...p, due_date: e.target.value || null }))
-                }
+                onChange={(e) => setNewTask((p) => ({ ...p, due_date: e.target.value || null }))}
                 className="[color-scheme:dark]"
               />
             </div>
@@ -521,9 +622,7 @@ function TasksPageContent() {
               <Label className="text-sm font-medium text-muted-foreground mb-2 block">Status</Label>
               <Select
                 value={newTask.status}
-                onValueChange={(v) =>
-                  setNewTask((p) => ({ ...p, status: v as TaskStatus }))
-                }
+                onValueChange={(v) => setNewTask((p) => ({ ...p, status: v as TaskStatus }))}
               >
                 <SelectTrigger className="h-10">
                   <SelectValue />
@@ -556,6 +655,14 @@ function TasksPageContent() {
           {editingTask && (
             <form onSubmit={handleEdit} className="px-6 py-6 space-y-6">
               <div>
+                <Label className="text-sm font-medium text-muted-foreground mb-2 block">Team</Label>
+                <AnimatedDropdown
+                  items={TEAM_OPTIONS}
+                  value={editingTask.team}
+                  onSelect={(v) => setEditingTask((p) => p && { ...p, team: v as TeamName })}
+                />
+              </div>
+              <div>
                 <Label className="text-sm font-medium text-muted-foreground mb-2 block">Assignee</Label>
                 <AnimatedDropdown
                   items={[
@@ -574,9 +681,7 @@ function TasksPageContent() {
                 <Label className="text-sm font-medium text-muted-foreground mb-2 block">Task Name</Label>
                 <Input
                   value={editingTask.task_name}
-                  onChange={(e) =>
-                    setEditingTask((p) => p && { ...p, task_name: e.target.value })
-                  }
+                  onChange={(e) => setEditingTask((p) => p && { ...p, task_name: e.target.value })}
                   required
                 />
               </div>
@@ -585,20 +690,14 @@ function TasksPageContent() {
                 <Input
                   type="date"
                   value={editingTask.due_date ?? ""}
-                  onChange={(e) =>
-                    setEditingTask(
-                      (p) => p && { ...p, due_date: e.target.value || null }
-                    )
-                  }
+                  onChange={(e) => setEditingTask((p) => p && { ...p, due_date: e.target.value || null })}
                   className="[color-scheme:dark]"
                 />
                 {editingTask.due_date && (
                   <button
                     type="button"
                     className="mt-2 text-xs text-destructive hover:underline"
-                    onClick={() =>
-                      setEditingTask((p) => p && { ...p, due_date: null })
-                    }
+                    onClick={() => setEditingTask((p) => p && { ...p, due_date: null })}
                   >
                     Remove Due Date
                   </button>
@@ -608,11 +707,7 @@ function TasksPageContent() {
                 <Label className="text-sm font-medium text-muted-foreground mb-2 block">Status</Label>
                 <Select
                   value={editingTask.status}
-                  onValueChange={(v) =>
-                    setEditingTask(
-                      (p) => p && { ...p, status: v as TaskStatus }
-                    )
-                  }
+                  onValueChange={(v) => setEditingTask((p) => p && { ...p, status: v as TaskStatus })}
                 >
                   <SelectTrigger className="h-10">
                     <SelectValue />
@@ -641,26 +736,14 @@ function TasksPageContent() {
       <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
         <DialogContent className="bg-card border border-border">
           <DialogHeader>
-            <DialogTitle className="text-base font-semibold">
-              Delete task #{deletingTask?.id}?
-            </DialogTitle>
+            <DialogTitle className="text-base font-semibold">Delete task #{deletingTask?.id}?</DialogTitle>
           </DialogHeader>
           <p className="text-sm text-muted-foreground -mt-1">
             &ldquo;{deletingTask?.task_name}&rdquo; will be permanently removed.
           </p>
           <DialogFooter className="gap-2 sm:gap-2 -mx-0 -mb-0 border-0 bg-transparent p-0 pt-2">
-            <Button
-              variant="outline"
-              className="h-9"
-              onClick={() => setDeleteDialogOpen(false)}
-            >
-              Cancel
-            </Button>
-            <Button
-              className="h-9 bg-destructive/90 text-white hover:bg-destructive"
-              onClick={handleDelete}
-              disabled={submitting}
-            >
+            <Button variant="outline" className="h-9" onClick={() => setDeleteDialogOpen(false)}>Cancel</Button>
+            <Button className="h-9 bg-destructive/90 text-white hover:bg-destructive" onClick={handleDelete} disabled={submitting}>
               {submitting ? "Deleting…" : "Delete"}
             </Button>
           </DialogFooter>
@@ -671,17 +754,13 @@ function TasksPageContent() {
       <Dialog open={rejectDialogOpen} onOpenChange={setRejectDialogOpen}>
         <DialogContent className="bg-card border border-border">
           <DialogHeader>
-            <DialogTitle className="text-base font-semibold">
-              Send back task #{rejectingTask?.id}?
-            </DialogTitle>
+            <DialogTitle className="text-base font-semibold">Send back task #{rejectingTask?.id}?</DialogTitle>
           </DialogHeader>
           <p className="text-sm text-muted-foreground -mt-1 mb-4">
             &ldquo;{rejectingTask?.task}&rdquo; will be moved back to In Progress.
           </p>
           <div>
-            <Label className="text-sm font-medium text-muted-foreground mb-2 block">
-              Rejection Reason
-            </Label>
+            <Label className="text-sm font-medium text-muted-foreground mb-2 block">Rejection Reason</Label>
             <Input
               placeholder="What needs to be fixed?"
               value={rejectionReason}
@@ -689,13 +768,7 @@ function TasksPageContent() {
             />
           </div>
           <DialogFooter className="gap-2 sm:gap-2 -mx-0 -mb-0 border-0 bg-transparent p-0 pt-2">
-            <Button
-              variant="outline"
-              className="h-9"
-              onClick={() => setRejectDialogOpen(false)}
-            >
-              Cancel
-            </Button>
+            <Button variant="outline" className="h-9" onClick={() => setRejectDialogOpen(false)}>Cancel</Button>
             <Button
               className="h-9 bg-primary text-primary-foreground hover:bg-primary/90"
               onClick={handleReject}
