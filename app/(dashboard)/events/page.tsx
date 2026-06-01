@@ -3,7 +3,7 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
-  ChevronLeft, ChevronRight, Plus, X, MapPin,
+  ChevronLeft, ChevronRight, Plus, MapPin,
   CalendarDays, Clock, Loader2,
 } from "lucide-react";
 import { toast } from "sonner";
