@@ -8,7 +8,7 @@
 // Do not add any webapp-only columns to the tasks table.
 
 import { createBrowserClient } from '@supabase/ssr';
-import type { DBTask, NewTask, TeamMember, TeamName, VPRole, TaskCollaborator } from './types';
+import type { DBTask, NewTask, TeamMember, TeamName, VPRole, TaskCollaborator, GuildCalendarEvent, NewGuildCalendarEvent } from './types';
 
 // All data operations go through server-side API routes so the
 // service-role key is always used, regardless of whether the caller
@@ -165,4 +165,31 @@ export async function removeVPRole(userId: string, team: TeamName): Promise<void
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ user_id: userId, team }),
   });
+}
+
+export async function fetchCalendarEvents(): Promise<GuildCalendarEvent[]> {
+  const res = await apiFetch(`${apiBase()}/api/events`);
+  return res.json();
+}
+
+export async function createCalendarEvent(event: NewGuildCalendarEvent): Promise<GuildCalendarEvent> {
+  const res = await apiFetch(`${apiBase()}/api/events`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(event),
+  });
+  return res.json();
+}
+
+export async function updateCalendarEvent(id: number, updates: Partial<GuildCalendarEvent>): Promise<GuildCalendarEvent> {
+  const res = await apiFetch(`${apiBase()}/api/events/${id}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(updates),
+  });
+  return res.json();
+}
+
+export async function deleteCalendarEvent(id: number): Promise<void> {
+  await apiFetch(`${apiBase()}/api/events/${id}`, { method: 'DELETE' });
 }

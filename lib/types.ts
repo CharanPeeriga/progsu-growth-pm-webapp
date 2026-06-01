@@ -56,3 +56,28 @@ export interface TaskCollaborator {
   submitted: boolean;
   submitted_at: string | null;
 }
+
+export interface GuildCalendarEvent {
+  id: number;
+  guild_id: string;
+  title: string;
+  description: string | null;
+  event_date: string;
+  start_time: string | null;
+  end_time: string | null;
+  color: string;
+  location: string | null;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface NewGuildCalendarEvent {
+  title: string;
+  description?: string;
+  event_date: string;
+  start_time?: string;
+  end_time?: string;
+  color?: string;
+  location?: string;
+}

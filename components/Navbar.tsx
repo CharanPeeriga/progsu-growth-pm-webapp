@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { CheckSquare, Users, BarChart2, LogOut, CalendarDays } from "lucide-react";
+import { CheckSquare, Users, BarChart2, LogOut, CalendarDays, CalendarCheck } from "lucide-react";
 import { useEffect, useState } from "react";
 import { cn } from "@/lib/utils";
 import { createClient } from "@/lib/supabase";
@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button";
 const navItems = [
   { href: "/tasks", label: "Tasks", icon: CheckSquare },
   { href: "/calendar", label: "Calendar", icon: CalendarDays },
+  { href: "/events", label: "Events", icon: CalendarCheck },
   { href: "/team", label: "Team", icon: Users },
   { href: "/progress", label: "Progress", icon: BarChart2 },
 ];
