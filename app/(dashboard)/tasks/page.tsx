@@ -400,21 +400,12 @@ function TasksPageContent() {
   const renderCollaborators = useCallback(
     (task: Task) => {
       const collabs = collabByTask.get(task.id);
-      if (!collabs || collabs.length === 0) return <span className="text-muted-foreground text-xs">—</span>;
+      if (!collabs || collabs.length === 0) return null;
       return (
         <div className="flex flex-wrap gap-1">
           {collabs.map((c) => (
-            <span
-              key={c.user_id}
-              className={cn(
-                "inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs border",
-                c.submitted
-                  ? "bg-green-950/60 text-green-400 border-green-900/40"
-                  : "bg-muted text-muted-foreground border-border"
-              )}
-            >
+            <span key={c.user_id} className="text-xs text-muted-foreground">
               {memberMap.get(c.user_id) ?? c.user_id}
-              {c.submitted ? " ✅" : " ⏳"}
             </span>
           ))}
         </div>
@@ -611,7 +602,7 @@ function TasksPageContent() {
               )}
             </div>
             <div>
-              <Label className="text-sm font-medium text-muted-foreground mb-2 block">Collaborators</Label>
+              <Label className="text-sm font-medium text-muted-foreground mb-2 block">Also assign to</Label>
               <Combobox
                 items={availableCollabOptions}
                 value={collabPickerValue || undefined}
@@ -622,6 +613,9 @@ function TasksPageContent() {
                 onClear={() => setCollabPickerValue("")}
                 placeholder="Search or add collaborator…"
               />
+              <p className="text-xs text-muted-foreground mt-1.5">
+                These members will also receive this task and must each submit before it enters review.
+              </p>
               {newTask.collaborator_ids.length > 0 && (
                 <div className="flex flex-wrap gap-1.5 mt-2">
                   {newTask.collaborator_ids.map((uid) => (
