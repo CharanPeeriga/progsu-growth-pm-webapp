@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo, useCallback, Suspense } from "react";
+import { useState, useEffect, useMemo, useCallback, useRef, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import { motion } from "framer-motion";
 import { Plus, Search, X } from "lucide-react";
@@ -32,6 +32,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import AnimatedDropdown from "@/components/ui/animated-dropdown";
+import Combobox from "@/components/ui/combobox";
 import {
   Dialog,
   DialogContent,
@@ -147,6 +148,9 @@ function TasksPageContent() {
 
   // Collaborator picker state for Assign panel
   const [collabPickerValue, setCollabPickerValue] = useState("");
+
+  // Remember last team selected in the Assign panel across open/close cycles
+  const lastTeamRef = useRef<TeamName | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -419,13 +423,20 @@ function TasksPageContent() {
     [collabByTask, memberMap]
   );
 
-  // Collaborator options = members not already selected and not the assignee
+  // Members filtered to the panel's selected team (for assignee + collab dropdowns)
+  const filteredMembersForPanel = useMemo(() => {
+    return newTask.team
+      ? teamMembers.filter((m) => m.team === newTask.team)
+      : teamMembers;
+  }, [teamMembers, newTask.team]);
+
+  // Collaborator options = panel-team members not already selected and not the assignee
   const availableCollabOptions = useMemo(() => {
     const selected = new Set(newTask.collaborator_ids);
-    return teamMembers
+    return filteredMembersForPanel
       .filter((m) => !selected.has(m.user_id) && m.user_id !== newTask.assignee_id)
       .map((m) => ({ label: m.display_name || m.user_id, value: m.user_id }));
-  }, [teamMembers, newTask.collaborator_ids, newTask.assignee_id]);
+  }, [filteredMembersForPanel, newTask.collaborator_ids, newTask.assignee_id]);
 
   return (
     <div className="space-y-6 page-fade-in">
@@ -527,7 +538,12 @@ function TasksPageContent() {
 
         <Button
           className="ml-auto h-10 bg-primary text-primary-foreground hover:bg-primary/90 font-medium gap-2 px-4"
-          onClick={() => setAssignSheetOpen(true)}
+          onClick={() => {
+            if (lastTeamRef.current) {
+              setNewTask((p) => ({ ...p, team: lastTeamRef.current! }));
+            }
+            setAssignSheetOpen(true);
+          }}
         >
           <Plus size={15} />
           Assign Task
@@ -571,29 +587,40 @@ function TasksPageContent() {
               <AnimatedDropdown
                 items={TEAM_OPTIONS}
                 value={newTask.team}
-                onSelect={(v) => setNewTask((p) => ({ ...p, team: v as TeamName }))}
+                onSelect={(v) => {
+                  const team = v as TeamName;
+                  lastTeamRef.current = team;
+                  setNewTask((p) => ({ ...p, team, assignee_id: "", collaborator_ids: [] }));
+                }}
               />
             </div>
             <div>
               <Label className="text-sm font-medium text-muted-foreground mb-2 block">Assignee</Label>
-              <AnimatedDropdown
-                items={teamMembers.map((m) => ({ label: m.display_name || m.user_id, value: m.user_id }))}
+              <Combobox
+                items={filteredMembersForPanel.map((m) => ({ label: m.display_name || m.user_id, value: m.user_id }))}
                 value={newTask.assignee_id || undefined}
                 onSelect={(v) => setNewTask((p) => ({ ...p, assignee_id: v }))}
-                placeholder={loadingMembers ? "Loading members…" : "Select team member"}
+                onClear={() => setNewTask((p) => ({ ...p, assignee_id: "" }))}
+                placeholder={loadingMembers ? "Loading members…" : "Search or select member…"}
                 loading={loadingMembers && teamMembers.length === 0}
               />
+              {newTask.team && (
+                <p className="text-xs text-muted-foreground mt-1">
+                  Showing {filteredMembersForPanel.length} member{filteredMembersForPanel.length !== 1 ? "s" : ""} from {newTask.team} team
+                </p>
+              )}
             </div>
             <div>
               <Label className="text-sm font-medium text-muted-foreground mb-2 block">Collaborators</Label>
-              <AnimatedDropdown
+              <Combobox
                 items={availableCollabOptions}
                 value={collabPickerValue || undefined}
                 onSelect={(v) => {
                   setNewTask((p) => ({ ...p, collaborator_ids: [...p.collaborator_ids, v] }));
                   setCollabPickerValue("");
                 }}
-                placeholder="Add collaborator…"
+                onClear={() => setCollabPickerValue("")}
+                placeholder="Search or add collaborator…"
               />
               {newTask.collaborator_ids.length > 0 && (
                 <div className="flex flex-wrap gap-1.5 mt-2">
