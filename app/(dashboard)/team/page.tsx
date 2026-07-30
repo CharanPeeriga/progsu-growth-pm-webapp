@@ -2,8 +2,7 @@
 
 import { useState, useEffect, useMemo, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { motion } from "framer-motion";
-import { Users, ChevronDown, ChevronRight, UserPlus, Trash2, Shield, Plus } from "lucide-react";
+import { ChevronDown, ChevronRight, UserPlus, Users } from "lucide-react";
 import { toast } from "sonner";
 import {
   fetchAllTasks,
@@ -15,51 +14,24 @@ import {
   removeVPRole,
 } from "@/lib/supabase";
 import type { DBTask, TeamMember, TeamName, VPRole } from "@/lib/types";
+import { PageHeader } from "@/components/ui/page-header";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import AnimatedDropdown from "@/components/ui/animated-dropdown";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogFooter,
-} from "@/components/ui/dialog";
-import { cn } from "@/lib/utils";
-import { TeamBadge, teamTabClass, TEAM_LABELS } from "@/components/ui/team-badge";
+import { EmptyState } from "@/components/ui/empty-state";
+import { VpBlock, type VpEntry } from "@/components/team/vp-block";
+import { MemberCard } from "@/components/team/member-card";
+import { MemberDialog, RemoveMemberDialog } from "@/components/team/member-dialog";
+import { TEAM_STYLE, type Status } from "@/lib/design";
 
 const GUILD_ID = process.env.NEXT_PUBLIC_DISCORD_GUILD_ID ?? "";
 
-const TEAM_FILTERS = [
-  { value: "all" as const, label: "All" },
-  { value: "growth" as const, label: "Growth" },
-  { value: "tech" as const, label: "Tech" },
-  { value: "operations" as const, label: "Operations" },
-  { value: "progirls" as const, label: "Progirls" },
-];
+const TEAM_ORDER: TeamName[] = ["growth", "tech", "operations", "progirls"];
 
-const TEAM_OPTIONS = [
-  { value: "growth", label: "Growth" },
-  { value: "tech", label: "Tech" },
-  { value: "operations", label: "Operations" },
-  { value: "progirls", label: "Progirls" },
-];
-
-const containerVariants = {
-  hidden: { opacity: 0 },
-  visible: { opacity: 1, transition: { staggerChildren: 0.06 } },
-};
-const itemVariants = {
-  hidden: { opacity: 0, y: 14 },
-  visible: { opacity: 1, y: 0, transition: { type: "spring" as const, stiffness: 100, damping: 15 } },
-};
-
-function isOverdue(t: DBTask): boolean {
-  if (!t.due_date || t.status === "done") return false;
-  const now = new Date();
-  now.setHours(0, 0, 0, 0);
-  return new Date(t.due_date + "T00:00:00") < now;
+function statusCountsFor(userId: string, tasks: DBTask[]): Record<Status, number> {
+  const counts: Record<Status, number> = { todo: 0, in_progress: 0, review: 0, done: 0 };
+  for (const t of tasks) {
+    if (t.assignee_id === userId) counts[t.status]++;
+  }
+  return counts;
 }
 
 export default function TeamPage() {
@@ -71,16 +43,15 @@ export default function TeamPage() {
   const [rosterExpanded, setRosterExpanded] = useState(false);
   const [teamFilter, setTeamFilter] = useState<"all" | TeamName>("all");
 
-  const [newUserId, setNewUserId] = useState("");
-  const [newDisplayName, setNewDisplayName] = useState("");
-  const [newMemberTeam, setNewMemberTeam] = useState<TeamName>("growth");
+  const [addOpen, setAddOpen] = useState(false);
+  const [newDiscordId, setNewDiscordId] = useState("");
+  const [newName, setNewName] = useState("");
+  const [newTeam, setNewTeam] = useState<TeamName>("growth");
+  const [newMakeVp, setNewMakeVp] = useState(false);
   const [adding, setAdding] = useState(false);
 
-  // VP state — per-team inline add form + removal confirmation
-  const [addingVPForTeam, setAddingVPForTeam] = useState<TeamName | null>(null);
-  const [addVPUserId, setAddVPUserId] = useState("");
-  const [savingVP, setSavingVP] = useState(false);
-  const [removingVP, setRemovingVP] = useState<VPRole | null>(null);
+  const [removingMember, setRemovingMember] = useState<TeamMember | null>(null);
+  const [removing, setRemoving] = useState(false);
 
   const loadAll = useCallback(async () => {
     try {
@@ -99,43 +70,18 @@ export default function TeamPage() {
     }
   }, []);
 
-  useEffect(() => { loadAll(); }, [loadAll]);
+  useEffect(() => {
+    loadAll();
+  }, [loadAll]);
 
-  const memberMap = useMemo(
-    () => new Map(members.map((m) => [m.user_id, m])),
-    [members]
-  );
+  const memberMap = useMemo(() => new Map(members.map((m) => [m.user_id, m])), [members]);
 
   const filteredMembers = useMemo(() => {
     if (teamFilter === "all") return members;
     return members.filter((m) => m.team === teamFilter);
   }, [members, teamFilter]);
 
-  const filteredTasks = useMemo(() => {
-    if (teamFilter === "all") return tasks;
-    return tasks.filter((t) => t.team === teamFilter);
-  }, [tasks, teamFilter]);
-
-  const memberUserIds = useMemo(
-    () => new Set(members.map((m) => m.user_id)),
-    [members]
-  );
-
-  const memberStats = useMemo(() => {
-    const map = new Map<string, { completed: number; pending: number; inReview: number; overdue: number }>();
-    for (const m of filteredMembers) {
-      map.set(m.user_id, { completed: 0, pending: 0, inReview: 0, overdue: 0 });
-    }
-    for (const t of filteredTasks) {
-      if (!map.has(t.assignee_id)) continue;
-      const s = map.get(t.assignee_id)!;
-      if (t.status === "done") s.completed++;
-      else if (t.status === "review") s.inReview++;
-      else if (isOverdue(t)) s.overdue++;
-      else s.pending++;
-    }
-    return map;
-  }, [filteredMembers, filteredTasks]);
+  const memberUserIds = useMemo(() => new Set(members.map((m) => m.user_id)), [members]);
 
   const tasksWithoutMember = useMemo(
     () => tasks.filter((t) => !memberUserIds.has(t.assignee_id)),
@@ -150,21 +96,53 @@ export default function TeamPage() {
     return Array.from(map.entries()).map(([id, count]) => ({ id, count }));
   }, [tasksWithoutMember]);
 
-  const totalTasks = filteredTasks.length;
-  const totalCompleted = filteredTasks.filter((t) => t.status === "done").length;
-  const completionRate = totalTasks > 0 ? Math.round((totalCompleted / totalTasks) * 100) : 0;
+  const vpKeySet = useMemo(
+    () => new Set(vpRoles.map((v) => `${v.user_id}:${v.team}`)),
+    [vpRoles]
+  );
+
+  const vpEntries: VpEntry[] = useMemo(
+    () =>
+      vpRoles.map((vp) => {
+        const member = memberMap.get(vp.user_id);
+        const name = member?.display_name || vp.user_id;
+        const counts = statusCountsFor(vp.user_id, tasks);
+        return {
+          id: vp.id,
+          user_id: vp.user_id,
+          team: vp.team,
+          name,
+          openTasks: counts.todo + counts.in_progress,
+        };
+      }),
+    [vpRoles, memberMap, tasks]
+  );
+
+  const teamCounts = useMemo(() => {
+    const counts: Partial<Record<TeamName, number>> = {};
+    for (const m of members) counts[m.team] = (counts[m.team] ?? 0) + 1;
+    return counts;
+  }, [members]);
 
   const handleAddMember = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newUserId.trim()) return;
+    if (!newDiscordId.trim()) {
+      toast.error("Please enter a Discord ID");
+      return;
+    }
     setAdding(true);
     try {
-      await addTeamMember(GUILD_ID, newUserId.trim(), newDisplayName.trim(), newMemberTeam);
-      const addedName = newDisplayName.trim() || newUserId.trim();
+      await addTeamMember(GUILD_ID, newDiscordId.trim(), newName.trim(), newTeam);
+      if (newMakeVp) {
+        await addVPRole(newDiscordId.trim(), newTeam);
+      }
+      const addedName = newName.trim() || newDiscordId.trim();
       toast.success(`✅ ${addedName} added to the progsu Task Management System`);
-      setNewUserId("");
-      setNewDisplayName("");
-      setNewMemberTeam("growth");
+      setAddOpen(false);
+      setNewDiscordId("");
+      setNewName("");
+      setNewTeam("growth");
+      setNewMakeVp(false);
       await loadAll();
     } catch (err) {
       const msg = err instanceof Error ? err.message : "";
@@ -175,16 +153,6 @@ export default function TeamPage() {
       }
     } finally {
       setAdding(false);
-    }
-  };
-
-  const handleRemoveMember = async (userId: string) => {
-    try {
-      await removeTeamMember(GUILD_ID, userId);
-      toast.success("Removed from team");
-      await loadAll();
-    } catch (err) {
-      toast.error(`Failed to remove: ${err instanceof Error ? err.message : "Unknown error"}`);
     }
   };
 
@@ -203,242 +171,155 @@ export default function TeamPage() {
     }
   };
 
-  const handleAddVP = async (team: TeamName) => {
-    if (!addVPUserId) { toast.error("Select a member"); return; }
-    setSavingVP(true);
+  const handleConfirmRemove = async () => {
+    if (!removingMember) return;
+    setRemoving(true);
     try {
-      await addVPRole(addVPUserId, team);
-      const name = memberMap.get(addVPUserId)?.display_name || addVPUserId;
-      toast.success(`✅ ${name} added as VP of ${TEAM_LABELS[team]} team`);
-      setAddingVPForTeam(null);
-      setAddVPUserId("");
+      await removeTeamMember(GUILD_ID, removingMember.user_id);
+      toast.success("Removed from team");
+      setRemovingMember(null);
       await loadAll();
     } catch (err) {
-      toast.error(`Failed: ${err instanceof Error ? err.message : "Unknown error"}`);
+      toast.error(`Failed to remove: ${err instanceof Error ? err.message : "Unknown error"}`);
     } finally {
-      setSavingVP(false);
+      setRemoving(false);
     }
   };
 
-  const handleRemoveVP = async () => {
-    if (!removingVP) return;
-    try {
-      await removeVPRole(removingVP.user_id, removingVP.team);
-      const name = memberMap.get(removingVP.user_id)?.display_name || removingVP.user_id;
-      toast.success(`✅ ${name} removed as VP of ${TEAM_LABELS[removingVP.team]} team`);
-      setRemovingVP(null);
-      await loadAll();
-    } catch (err) {
-      toast.error(`Failed: ${err instanceof Error ? err.message : "Unknown error"}`);
-    }
-  };
-
-  const vpByTeam = useMemo(() => {
-    const map = new Map<TeamName, VPRole[]>();
-    for (const vp of vpRoles) {
-      const list = map.get(vp.team) ?? [];
-      list.push(vp);
-      map.set(vp.team, list);
-    }
-    return map;
-  }, [vpRoles]);
+  const handleToggleVp = useCallback(
+    async (userId: string, team: TeamName) => {
+      const isVp = vpKeySet.has(`${userId}:${team}`);
+      const name = memberMap.get(userId)?.display_name || userId;
+      try {
+        if (isVp) {
+          await removeVPRole(userId, team);
+          toast.success(`✅ ${name} removed as VP of ${TEAM_STYLE[team].label} team`);
+        } else {
+          await addVPRole(userId, team);
+          toast.success(`✅ ${name} added as VP of ${TEAM_STYLE[team].label} team`);
+        }
+        await loadAll();
+      } catch (err) {
+        toast.error(`Failed: ${err instanceof Error ? err.message : "Unknown error"}`);
+      }
+    },
+    [vpKeySet, memberMap, loadAll]
+  );
 
   return (
-    <div className="space-y-6 page-fade-in">
-      <div className="mb-6">
-        <h1 className="text-2xl font-semibold text-foreground">Team</h1>
-        <p className="text-sm text-muted-foreground mt-1">
-          {members.length} official member{members.length !== 1 ? "s" : ""}
-        </p>
-      </div>
+    <div className="pb-16 space-y-6">
+      <PageHeader
+        title="Team"
+        subtitle="Who is on each team and what they are carrying."
+        count={members.length}
+        actions={
+          <Button onClick={() => setAddOpen(true)}>
+            <UserPlus className="size-[15px]" />
+            Add member
+          </Button>
+        }
+      />
 
-      {/* Team filter tabs */}
-      <div className="flex items-center gap-1 bg-muted rounded-lg p-1 w-fit">
-        {TEAM_FILTERS.map(({ value, label }) => (
-          <button
-            key={value}
-            onClick={() => setTeamFilter(value)}
-            className={cn(
-              "px-3 py-1.5 rounded-md text-sm font-medium transition-colors",
-              teamFilter === value && value === "all"
-                ? "bg-primary text-primary-foreground"
-                : teamFilter === value
-                ? teamTabClass(value as TeamName, true)
-                : "text-muted-foreground hover:text-foreground"
-            )}
-          >
-            {label}
-          </button>
-        ))}
-      </div>
+      <VpBlock vps={vpEntries} members={members} vpRoles={vpRoles} onToggleVp={handleToggleVp} />
 
-      {/* Add Member */}
-      <div className="bg-card border border-border rounded-xl p-6 shadow-sm">
-        <div className="mb-4">
-          <h2 className="text-base font-semibold text-foreground flex items-center gap-2">
-            <UserPlus size={16} />
-            Add Member
-          </h2>
-          <p className="text-sm text-muted-foreground mt-0.5">Add someone to the progsu Task Management System</p>
-        </div>
-        <form onSubmit={handleAddMember} className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-          <div>
-            <Label className="text-xs text-muted-foreground mb-1.5 block">Discord User ID *</Label>
-            <Input
-              placeholder="e.g. 123456789012345678"
-              value={newUserId}
-              onChange={(e) => setNewUserId(e.target.value)}
-              required
-            />
-          </div>
-          <div>
-            <Label className="text-xs text-muted-foreground mb-1.5 block">Display Name (optional)</Label>
-            <Input
-              placeholder="e.g. John Doe"
-              value={newDisplayName}
-              onChange={(e) => setNewDisplayName(e.target.value)}
-            />
-          </div>
-          <div>
-            <Label className="text-xs text-muted-foreground mb-1.5 block">Team</Label>
-            <AnimatedDropdown
-              items={TEAM_OPTIONS}
-              value={newMemberTeam}
-              onSelect={(v) => setNewMemberTeam(v as TeamName)}
-            />
-          </div>
-          <div className="flex items-end">
-            <Button
-              type="submit"
-              className="h-10 w-full px-5 bg-primary text-primary-foreground hover:bg-primary/90 font-medium"
-              disabled={adding}
-            >
-              {adding ? "Adding…" : "Add Member"}
-            </Button>
-          </div>
-        </form>
-      </div>
-
-      {/* Summary */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        {[
-          { label: "Total Members", value: filteredMembers.length },
-          { label: "Total Tasks", value: totalTasks },
-          { label: "Completion Rate", value: `${completionRate}%` },
-        ].map(({ label, value }) => (
-          <motion.div
-            key={label}
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ type: "spring" as const, stiffness: 100, damping: 15 }}
-            className="bg-card border border-border rounded-xl p-6 shadow-sm"
-          >
-            <p className="text-sm text-muted-foreground font-medium">{label}</p>
-            <p className="text-3xl font-bold text-foreground mt-1">{value}</p>
-          </motion.div>
-        ))}
-      </div>
-
-      {/* Member cards */}
-      {loading ? (
-        <div className="text-muted-foreground text-sm py-16 text-center">Loading…</div>
-      ) : filteredMembers.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-24 text-muted-foreground">
-          <Users size={40} className="mb-3 text-muted-foreground/30" />
-          <p className="text-sm font-medium text-muted-foreground">No team members</p>
-          <p className="text-xs text-muted-foreground/70 mt-1">Add members using the form above</p>
-        </div>
-      ) : (
-        <motion.div
-          variants={containerVariants}
-          initial="hidden"
-          animate="visible"
-          className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4"
+      <div className="inline-flex items-center gap-1 rounded-full border border-[rgba(255,255,255,0.06)] bg-[rgba(255,255,255,0.02)] p-1">
+        <button
+          onClick={() => setTeamFilter("all")}
+          className="h-7 rounded-full px-3 t-caption font-semibold transition-colors duration-[160ms]"
+          style={
+            teamFilter === "all"
+              ? {
+                  backgroundColor: "rgba(107,138,253,0.10)",
+                  color: "#C7D1FE",
+                  boxShadow: "inset 0 0 0 1px rgba(107,138,253,0.24)",
+                }
+              : undefined
+          }
         >
-          {filteredMembers.map((m) => {
-            const stats = memberStats.get(m.user_id) ?? { completed: 0, pending: 0, inReview: 0, overdue: 0 };
-            return (
-              <motion.div
-                key={m.id}
-                variants={itemVariants}
-                className="bg-card border border-border rounded-xl p-6 shadow-sm hover:bg-muted/30 transition-colors"
-              >
-                <div className="flex items-start justify-between mb-0.5">
-                  <p className="font-medium text-sm text-foreground truncate">{m.display_name || m.user_id}</p>
-                  {m.team && <TeamBadge team={m.team} className="ml-2 shrink-0" />}
-                </div>
-                <p className="text-xs text-muted-foreground font-mono mb-4 truncate">{m.user_id}</p>
-                <div className="space-y-1.5 text-sm mb-5">
-                  <div className="flex items-center justify-between">
-                    <span className="text-muted-foreground">✅ Completed</span>
-                    <span className="text-green-400 font-medium">{stats.completed}</span>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-muted-foreground">🔵 Pending</span>
-                    <span className="text-foreground font-medium">{stats.pending}</span>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-muted-foreground">⏳ In Review</span>
-                    <span className="text-purple-400 font-medium">{stats.inReview}</span>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-muted-foreground">⚠️ Overdue</span>
-                    <span className={cn("font-medium", stats.overdue > 0 ? "text-red-400" : "text-muted-foreground")}>
-                      {stats.overdue}
-                    </span>
-                  </div>
-                </div>
-                <div className="flex gap-2">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="flex-1 border-border text-primary hover:bg-primary/10 hover:border-primary"
-                    onClick={() => router.push(`/tasks?search=${encodeURIComponent(m.user_id)}`)}
-                  >
-                    View Tasks
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="border-destructive/50 text-destructive hover:bg-destructive/10 hover:border-destructive"
-                    onClick={() => handleRemoveMember(m.user_id)}
-                  >
-                    <Trash2 size={13} />
-                  </Button>
-                </div>
-              </motion.div>
-            );
-          })}
-        </motion.div>
+          <span className={teamFilter === "all" ? undefined : "text-[#6E7686] hover:text-[#A7B0C0]"}>
+            All
+          </span>{" "}
+          <span className="font-mono text-[10px]">{members.length}</span>
+        </button>
+        {TEAM_ORDER.map((team) => {
+          const t = TEAM_STYLE[team];
+          const active = teamFilter === team;
+          return (
+            <button
+              key={team}
+              onClick={() => setTeamFilter(team)}
+              className="h-7 rounded-full px-3 t-caption font-semibold transition-colors duration-[160ms]"
+              style={
+                active
+                  ? { backgroundColor: t.fill, color: t.text, boxShadow: `inset 0 0 0 1px ${t.border}` }
+                  : undefined
+              }
+            >
+              <span className={active ? undefined : "text-[#6E7686] hover:text-[#A7B0C0]"}>
+                {t.label}
+              </span>{" "}
+              <span className="font-mono text-[10px]">{teamCounts[team] ?? 0}</span>
+            </button>
+          );
+        })}
+      </div>
+
+      {loading ? (
+        <div className="py-16 text-center t-body-sm text-[#6E7686]">Loading…</div>
+      ) : filteredMembers.length === 0 ? (
+        <EmptyState
+          icon={Users}
+          title="No team members"
+          description="Add someone to get started."
+          action={<Button onClick={() => setAddOpen(true)}>Add member</Button>}
+        />
+      ) : (
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
+          {filteredMembers.map((m) => (
+            <MemberCard
+              key={m.id}
+              member={m}
+              isVp={vpKeySet.has(`${m.user_id}:${m.team}`)}
+              statusCounts={statusCountsFor(m.user_id, tasks)}
+              onViewTasks={() => router.push(`/tasks?search=${encodeURIComponent(m.user_id)}`)}
+              onToggleVp={() => handleToggleVp(m.user_id, m.team)}
+              onRemove={() => setRemovingMember(m)}
+            />
+          ))}
+        </div>
       )}
 
-      {/* Tasks without team member */}
       {uniqueUnregistered.length > 0 && (
-        <div className="bg-card border border-border rounded-xl shadow-sm overflow-hidden">
+        <div className="surface-card overflow-hidden">
           <button
             onClick={() => setRosterExpanded(!rosterExpanded)}
-            className="w-full flex items-center justify-between px-6 py-4 text-left hover:bg-muted/30 transition-colors"
+            className="flex w-full items-center justify-between px-5 py-4 text-left transition-colors hover:bg-[rgba(255,255,255,0.03)]"
           >
-            <span className="text-sm font-medium text-muted-foreground">
-              {tasksWithoutMember.length} task{tasksWithoutMember.length !== 1 ? "s" : ""} assigned to people not on the official roster
+            <span className="t-body-sm text-[#A7B0C0]">
+              {tasksWithoutMember.length} task{tasksWithoutMember.length !== 1 ? "s" : ""} assigned to
+              people not on the official roster
             </span>
-            {rosterExpanded ? <ChevronDown size={16} className="text-muted-foreground" /> : <ChevronRight size={16} className="text-muted-foreground" />}
+            {rosterExpanded ? (
+              <ChevronDown className="size-4 text-[#6E7686]" />
+            ) : (
+              <ChevronRight className="size-4 text-[#6E7686]" />
+            )}
           </button>
           {rosterExpanded && (
-            <div className="border-t border-border divide-y divide-border">
+            <div className="border-t border-[rgba(255,255,255,0.06)]">
               {uniqueUnregistered.map(({ id, count }) => (
-                <div key={id} className="flex items-center justify-between px-6 py-3">
+                <div
+                  key={id}
+                  className="flex items-center justify-between border-b border-[rgba(255,255,255,0.05)] px-5 py-3 last:border-none"
+                >
                   <div>
-                    <p className="text-sm font-mono text-foreground">{id}</p>
-                    <p className="text-xs text-muted-foreground mt-0.5">{count} task{count !== 1 ? "s" : ""}</p>
+                    <p className="t-mono text-[#E8EBF2]">{id}</p>
+                    <p className="t-caption text-[#6E7686] mt-0.5">
+                      {count} task{count !== 1 ? "s" : ""}
+                    </p>
                   </div>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="h-8 text-xs border-primary/50 text-primary hover:bg-primary/10"
-                    onClick={() => handleAddUnregistered(id)}
-                  >
-                    Add to Team
+                  <Button size="sm" variant="secondary" onClick={() => handleAddUnregistered(id)}>
+                    Add to team
                   </Button>
                 </div>
               ))}
@@ -447,124 +328,28 @@ export default function TeamPage() {
         </div>
       )}
 
-      {/* VP Roles section */}
-      <div className="bg-card border border-border rounded-xl p-6 shadow-sm">
-        <h2 className="text-base font-semibold text-foreground flex items-center gap-2 mb-4">
-          <Shield size={16} />
-          VP Roles
-        </h2>
+      <MemberDialog
+        open={addOpen}
+        onOpenChange={setAddOpen}
+        submitting={adding}
+        onSubmit={handleAddMember}
+        discordId={newDiscordId}
+        onDiscordIdChange={setNewDiscordId}
+        name={newName}
+        onNameChange={setNewName}
+        team={newTeam}
+        onTeamChange={setNewTeam}
+        makeVp={newMakeVp}
+        onMakeVpChange={setNewMakeVp}
+      />
 
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-          {(["growth", "tech", "operations", "progirls"] as TeamName[]).map((team) => {
-            const vps = vpByTeam.get(team) ?? [];
-            const isAddingHere = addingVPForTeam === team;
-            // Members not already VP of this team
-            const alreadyVP = new Set(vps.map((v) => v.user_id));
-            const eligibleMembers = members.filter((m) => !alreadyVP.has(m.user_id));
-
-            return (
-              <div key={team} className="bg-muted/30 border border-border rounded-lg p-4 space-y-3">
-                <div className="flex items-center justify-between">
-                  <TeamBadge team={team} />
-                  <span className="text-xs text-muted-foreground">VP</span>
-                </div>
-
-                {vps.length === 0 && !isAddingHere && (
-                  <p className="text-sm text-muted-foreground">(none)</p>
-                )}
-
-                {vps.map((vp) => {
-                  const member = memberMap.get(vp.user_id);
-                  return (
-                    <div key={vp.id} className="flex items-center justify-between">
-                      <div className="min-w-0">
-                        <p className="text-sm font-medium text-foreground truncate">
-                          {member?.display_name || vp.user_id}
-                        </p>
-                        {member?.display_name && (
-                          <p className="text-xs text-muted-foreground font-mono truncate">{vp.user_id}</p>
-                        )}
-                      </div>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="h-7 text-xs ml-2 shrink-0 border-destructive/50 text-destructive hover:bg-destructive/10 hover:border-destructive"
-                        onClick={() => setRemovingVP(vp)}
-                      >
-                        Remove
-                      </Button>
-                    </div>
-                  );
-                })}
-
-                {isAddingHere ? (
-                  <div className="space-y-2 pt-1">
-                    <AnimatedDropdown
-                      items={eligibleMembers.map((m) => ({ label: m.display_name || m.user_id, value: m.user_id }))}
-                      value={addVPUserId || undefined}
-                      onSelect={setAddVPUserId}
-                      placeholder="Select member…"
-                    />
-                    <div className="flex gap-2">
-                      <Button
-                        size="sm"
-                        className="flex-1 h-8 text-xs bg-primary text-primary-foreground hover:bg-primary/90"
-                        onClick={() => handleAddVP(team)}
-                        disabled={savingVP || !addVPUserId}
-                      >
-                        {savingVP ? "Adding…" : "Confirm"}
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="h-8 text-xs"
-                        onClick={() => { setAddingVPForTeam(null); setAddVPUserId(""); }}
-                      >
-                        Cancel
-                      </Button>
-                    </div>
-                  </div>
-                ) : (
-                  <button
-                    onClick={() => { setAddingVPForTeam(team); setAddVPUserId(""); }}
-                    className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors pt-1"
-                  >
-                    <Plus size={12} />
-                    Add VP
-                  </button>
-                )}
-              </div>
-            );
-          })}
-        </div>
-      </div>
-
-      {/* Remove VP confirmation dialog */}
-      <Dialog open={!!removingVP} onOpenChange={(open) => !open && setRemovingVP(null)}>
-        <DialogContent className="bg-card border border-border">
-          <DialogHeader>
-            <DialogTitle className="text-base font-semibold">Remove VP role?</DialogTitle>
-          </DialogHeader>
-          <p className="text-sm text-muted-foreground -mt-1">
-            {removingVP && (
-              <>
-                Remove{" "}
-                <span className="font-medium text-foreground">
-                  {memberMap.get(removingVP.user_id)?.display_name || removingVP.user_id}
-                </span>{" "}
-                as VP of the{" "}
-                <span className="font-medium text-foreground">{TEAM_LABELS[removingVP.team]}</span> team?
-              </>
-            )}
-          </p>
-          <DialogFooter className="gap-2 sm:gap-2 border-0 bg-transparent p-0 pt-2">
-            <Button variant="outline" className="h-9" onClick={() => setRemovingVP(null)}>Cancel</Button>
-            <Button className="h-9 bg-destructive/90 text-white hover:bg-destructive" onClick={handleRemoveVP}>
-              Remove
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <RemoveMemberDialog
+        open={!!removingMember}
+        onOpenChange={(open) => !open && setRemovingMember(null)}
+        name={removingMember?.display_name || removingMember?.user_id || ""}
+        submitting={removing}
+        onConfirm={handleConfirmRemove}
+      />
     </div>
   );
 }
