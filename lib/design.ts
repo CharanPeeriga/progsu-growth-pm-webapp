@@ -17,6 +17,15 @@ export const STATUS_STYLE: Record<Status, { label: string; base: string; text: s
 
 export const STATUS_ORDER: Status[] = ["todo", "in_progress", "review", "done"];
 
+export type EventCategory = "workshop" | "social" | "meeting" | "external";
+
+export const EVENT_CATEGORY: Record<EventCategory, { label: string; base: string; text: string; fill: string; border: string }> = {
+  workshop: { label: "Workshop",  base: "#6B8AFD", text: "#C7D1FE", fill: "rgba(107,138,253,0.12)", border: "rgba(107,138,253,0.28)" },
+  social:   { label: "Social",    base: "#F472B6", text: "#F9A8D4", fill: "rgba(244,114,182,0.12)", border: "rgba(244,114,182,0.28)" },
+  meeting:  { label: "Meeting",   base: "#A78BFA", text: "#C4B5FD", fill: "rgba(167,139,250,0.12)", border: "rgba(167,139,250,0.28)" },
+  external: { label: "External",  base: "#22D3EE", text: "#67E8F9", fill: "rgba(34,211,238,0.12)",  border: "rgba(34,211,238,0.28)" },
+};
+
 export const MOTION = {
   ease: [0.2, 0.8, 0.2, 1] as const,
   enter: { duration: 0.22 },

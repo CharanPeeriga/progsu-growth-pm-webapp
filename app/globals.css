@@ -412,4 +412,7 @@ input[type="date"]::-webkit-calendar-picker-indicator:hover {
     flex-shrink: 0;
     pointer-events: none;
   }
+
+  .cal-cell-last-col { border-right-width: 0; }
+  .cal-cell-last-row { border-bottom-width: 0; }
 }
