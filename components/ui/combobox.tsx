@@ -92,7 +92,7 @@ export default function Combobox({
         <input
           ref={inputRef}
           type="text"
-          className="flex-1 bg-transparent outline-none placeholder:text-[#4E5665] text-[#E8EBF2]"
+          className="min-w-0 flex-1 bg-transparent outline-none placeholder:text-[#4E5665] text-[#E8EBF2]"
           placeholder={loading ? 'Loading members…' : placeholder}
           value={query}
           disabled={loading}

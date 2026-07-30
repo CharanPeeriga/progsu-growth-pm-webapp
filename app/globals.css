@@ -400,4 +400,16 @@ input[type="date"]::-webkit-calendar-picker-indicator:hover {
     border-radius: var(--radius-modal) var(--radius-modal) 0 0;
     pointer-events: none;
   }
+
+  .select-dot::before {
+    content: "";
+    display: inline-block;
+    width: 6px;
+    height: 6px;
+    margin-right: 8px;
+    border-radius: 999px;
+    background: var(--dot-color, currentColor);
+    flex-shrink: 0;
+    pointer-events: none;
+  }
 }

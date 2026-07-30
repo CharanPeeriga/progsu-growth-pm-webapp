@@ -2,8 +2,7 @@
 
 import { useState, useEffect, useMemo, useCallback, useRef, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
-import { motion } from "framer-motion";
-import { Plus, Search, X } from "lucide-react";
+import { Plus, Download } from "lucide-react";
 import { toast } from "sonner";
 import {
   fetchAllTasks,
@@ -13,97 +12,22 @@ import {
   fetchTeamMembers,
   fetchAllCollaborators,
 } from "@/lib/supabase";
-import type { DBTask, NewTask, TaskStatus, TeamMember, TeamName, TaskCollaborator } from "@/lib/types";
-import { TaskList, type Task } from "@/components/ui/task-list";
+import type { DBTask, TaskStatus, TeamMember, TeamName, TaskCollaborator } from "@/lib/types";
+import { PageHeader } from "@/components/ui/page-header";
+import { ThroughputRail } from "@/components/ui/throughput-rail";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  Sheet,
-  SheetContent,
-  SheetHeader,
-  SheetTitle,
-} from "@/components/ui/sheet";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import AnimatedDropdown from "@/components/ui/animated-dropdown";
-import Combobox from "@/components/ui/combobox";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogFooter,
-} from "@/components/ui/dialog";
-import { cn } from "@/lib/utils";
-import { TeamBadge, teamTabClass } from "@/components/ui/team-badge";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { TaskAnalyticsBar } from "@/components/tasks/task-analytics-bar";
+import { ReviewBanner } from "@/components/tasks/review-banner";
+import { TaskFilters, type SortOption } from "@/components/tasks/task-filters";
+import { TaskTable } from "@/components/tasks/task-table";
+import { TaskDialog } from "@/components/tasks/task-dialog";
+import { TEAM_STYLE } from "@/lib/design";
 
 const GUILD_ID = process.env.NEXT_PUBLIC_DISCORD_GUILD_ID ?? "";
-
-type FilterStatus = "all" | TaskStatus;
-
-const filterLabels: Record<FilterStatus, string> = {
-  all: "All",
-  todo: "Todo",
-  in_progress: "In Progress",
-  review: "In Review",
-  done: "Done",
-};
-
-const TEAM_FILTERS = [
-  { value: "all" as const, label: "All Teams" },
-  { value: "growth" as const, label: "Growth" },
-  { value: "tech" as const, label: "Tech" },
-  { value: "operations" as const, label: "Operations" },
-  { value: "progirls" as const, label: "Progirls" },
-];
-
-const TEAM_OPTIONS = [
-  { value: "growth", label: "Growth" },
-  { value: "tech", label: "Tech" },
-  { value: "operations", label: "Operations" },
-  { value: "progirls", label: "Progirls" },
-];
-
-function formatDate(dateStr: string | null): string {
-  if (!dateStr) return "No due date";
-  const d = new Date(dateStr + "T12:00:00");
-  return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
-}
-
-function dbTaskToTask(t: DBTask, memberMap: Map<string, string>): Task {
-  const statusMap: Record<TaskStatus, Task["status"]> = {
-    todo: "Pending",
-    in_progress: "In Progress",
-    review: "In Review",
-    done: "Done",
-  };
-  return {
-    id: t.id,
-    task: t.task_name,
-    assignee: memberMap.get(t.assignee_id) ?? t.assignee_id,
-    assigner: t.assigner_id,
-    status: statusMap[t.status],
-    dueDate: formatDate(t.due_date),
-    rejectionReason: t.rejection_reason,
-  };
-}
-
-function getDueDateClass(t: DBTask): string {
-  if (!t.due_date || t.status === "done") return "text-muted-foreground text-sm";
-  const now = new Date();
-  now.setHours(0, 0, 0, 0);
-  const due = new Date(t.due_date + "T00:00:00");
-  const diffDays = (due.getTime() - now.getTime()) / (1000 * 60 * 60 * 24);
-  if (diffDays < 0) return "text-red-400 font-medium text-sm";
-  if (diffDays <= 2) return "text-yellow-400 font-medium text-sm";
-  return "text-muted-foreground text-sm";
-}
+const PAGE_SIZE = 25;
 
 function isOverdue(t: DBTask): boolean {
   if (!t.due_date || t.status === "done") return false;
@@ -112,17 +36,6 @@ function isOverdue(t: DBTask): boolean {
   return new Date(t.due_date + "T00:00:00") < now;
 }
 
-type NewTaskWithTeam = NewTask & { team: TeamName; collaborator_ids: string[] };
-
-const defaultNewTask: NewTaskWithTeam = {
-  assignee_id: "",
-  task_name: "",
-  due_date: null,
-  status: "todo",
-  team: "growth",
-  collaborator_ids: [],
-};
-
 function TasksPageContent() {
   const searchParams = useSearchParams();
   const [tasks, setTasks] = useState<DBTask[]>([]);
@@ -130,27 +43,33 @@ function TasksPageContent() {
   const [collaborators, setCollaborators] = useState<TaskCollaborator[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadingMembers, setLoadingMembers] = useState(true);
+
   const [search, setSearch] = useState(searchParams.get("search") ?? "");
-  const [filter, setFilter] = useState<FilterStatus>("all");
   const [teamFilter, setTeamFilter] = useState<"all" | TeamName>("all");
+  const [statusFilter, setStatusFilter] = useState<"all" | TaskStatus>("all");
+  const [assigneeFilter, setAssigneeFilter] = useState("");
+  const [sort, setSort] = useState<SortOption>("newest");
+  const [page, setPage] = useState(1);
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
 
-  const [assignSheetOpen, setAssignSheetOpen] = useState(false);
-  const [editSheetOpen, setEditSheetOpen] = useState(false);
+  const [taskDialogOpen, setTaskDialogOpen] = useState(false);
+  const [dialogMode, setDialogMode] = useState<"create" | "edit">("create");
+  const [editingTaskId, setEditingTaskId] = useState<number | null>(null);
+  const [dialogTeam, setDialogTeam] = useState<TeamName | "">("");
+  const [dialogStatus, setDialogStatus] = useState<TaskStatus>("todo");
+  const [dialogTitle, setDialogTitle] = useState("");
+  const [dialogDueDate, setDialogDueDate] = useState<string | null>(null);
+  const [dialogAssigneeIds, setDialogAssigneeIds] = useState<string[]>([]);
+
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [deletingTasks, setDeletingTasks] = useState<DBTask[]>([]);
   const [rejectDialogOpen, setRejectDialogOpen] = useState(false);
-
-  const [newTask, setNewTask] = useState<NewTaskWithTeam>(defaultNewTask);
-  const [editingTask, setEditingTask] = useState<DBTask | null>(null);
-  const [deletingTask, setDeletingTask] = useState<DBTask | null>(null);
-  const [rejectingTask, setRejectingTask] = useState<Task | null>(null);
+  const [rejectingTask, setRejectingTask] = useState<DBTask | null>(null);
   const [rejectionReason, setRejectionReason] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
-  // Collaborator picker state for Assign panel
-  const [collabPickerValue, setCollabPickerValue] = useState("");
-
-  // Remember last team selected in the Assign panel across open/close cycles
   const lastTeamRef = useRef<TeamName | null>(null);
+  const tableRef = useRef<HTMLDivElement>(null);
 
   const load = useCallback(async () => {
     try {
@@ -174,7 +93,19 @@ function TasksPageContent() {
     load().finally(() => setLoadingMembers(false));
   }, [load]);
 
-  // Map task_id → collaborator list
+  useEffect(() => {
+    setPage(1);
+  }, [teamFilter, statusFilter, assigneeFilter, search, sort]);
+
+  const memberMap = useMemo(
+    () => new Map(teamMembers.map((m) => [m.user_id, m.display_name ?? m.user_id])),
+    [teamMembers]
+  );
+  const memberTeamMap = useMemo(
+    () => new Map(teamMembers.map((m) => [m.user_id, m.team])),
+    [teamMembers]
+  );
+
   const collabByTask = useMemo(() => {
     const map = new Map<number, TaskCollaborator[]>();
     for (const c of collaborators) {
@@ -188,121 +119,207 @@ function TasksPageContent() {
   const filtered = useMemo(() => {
     let list = tasks;
     if (teamFilter !== "all") list = list.filter((t) => t.team === teamFilter);
-    if (filter !== "all") list = list.filter((t) => t.status === filter);
-    if (search.trim()) {
-      const q = search.toLowerCase();
+    if (statusFilter !== "all") list = list.filter((t) => t.status === statusFilter);
+    if (assigneeFilter) {
       list = list.filter(
-        (t) => t.task_name.toLowerCase().includes(q) || t.assignee_id.toLowerCase().includes(q)
+        (t) =>
+          t.assignee_id === assigneeFilter ||
+          (collabByTask.get(t.id) ?? []).some((c) => c.user_id === assigneeFilter)
+      );
+    }
+    if (search.trim()) {
+      const q = search.trim().toLowerCase();
+      list = list.filter((t) => {
+        const assigneeName = memberMap.get(t.assignee_id) ?? t.assignee_id;
+        const teamLabel = TEAM_STYLE[t.team].label;
+        return (
+          t.task_name.toLowerCase().includes(q) ||
+          assigneeName.toLowerCase().includes(q) ||
+          teamLabel.toLowerCase().includes(q)
+        );
+      });
+    }
+    return list;
+  }, [tasks, teamFilter, statusFilter, assigneeFilter, search, collabByTask, memberMap]);
+
+  const sorted = useMemo(() => {
+    const list = [...filtered];
+    if (sort === "newest") {
+      list.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+    } else if (sort === "due_soonest") {
+      list.sort((a, b) => {
+        if (!a.due_date && !b.due_date) return 0;
+        if (!a.due_date) return 1;
+        if (!b.due_date) return -1;
+        return new Date(a.due_date).getTime() - new Date(b.due_date).getTime();
+      });
+    } else if (sort === "assignee") {
+      list.sort((a, b) =>
+        (memberMap.get(a.assignee_id) ?? a.assignee_id).localeCompare(
+          memberMap.get(b.assignee_id) ?? b.assignee_id
+        )
       );
     }
     return list;
-  }, [tasks, teamFilter, filter, search]);
+  }, [filtered, sort, memberMap]);
 
-  const memberMap = useMemo(
-    () => new Map(teamMembers.map((m) => [m.user_id, m.display_name ?? m.user_id])),
-    [teamMembers]
+  const totalPages = Math.max(1, Math.ceil(sorted.length / PAGE_SIZE));
+  const clampedPage = Math.min(page, totalPages);
+  const paginated = useMemo(
+    () => sorted.slice((clampedPage - 1) * PAGE_SIZE, clampedPage * PAGE_SIZE),
+    [sorted, clampedPage]
   );
 
-  const memberIdSet = useMemo(
-    () => new Set(teamMembers.map((m) => m.user_id)),
-    [teamMembers]
-  );
-
-  const displayTasks = useMemo(
-    () => filtered.map((t) => dbTaskToTask(t, memberMap)),
-    [filtered, memberMap]
-  );
-
-  const reviewByTeam = useMemo(() => {
-    return tasks
-      .filter((t) => t.status === "review")
-      .reduce((acc, t) => {
-        acc[t.team] = (acc[t.team] ?? 0) + 1;
-        return acc;
-      }, {} as Partial<Record<TeamName, number>>);
+  const statusCounts = useMemo(() => {
+    const counts: Record<TaskStatus, number> = { todo: 0, in_progress: 0, review: 0, done: 0 };
+    for (const t of tasks) counts[t.status]++;
+    return counts;
   }, [tasks]);
 
-  const reviewCount = useMemo(
-    () => Object.values(reviewByTeam).reduce((s, n) => s + (n ?? 0), 0),
-    [reviewByTeam]
+  const teamCounts = useMemo(() => {
+    const counts: Partial<Record<TeamName, number>> = {};
+    for (const t of tasks) counts[t.team] = (counts[t.team] ?? 0) + 1;
+    return counts;
+  }, [tasks]);
+
+  const overdueCount = useMemo(() => tasks.filter(isOverdue).length, [tasks]);
+  const pendingReviewCount = statusCounts.review;
+  const hasActiveFilters =
+    teamFilter !== "all" || statusFilter !== "all" || assigneeFilter !== "" || search.trim() !== "";
+
+  const openCreateDialog = useCallback(() => {
+    setDialogMode("create");
+    setEditingTaskId(null);
+    setDialogTeam(lastTeamRef.current ?? "");
+    setDialogStatus("todo");
+    setDialogTitle("");
+    setDialogDueDate(null);
+    setDialogAssigneeIds([]);
+    setTaskDialogOpen(true);
+  }, []);
+
+  const openEditDialog = useCallback((task: DBTask) => {
+    setDialogMode("edit");
+    setEditingTaskId(task.id);
+    setDialogTeam(task.team);
+    setDialogStatus(task.status);
+    setDialogTitle(task.task_name);
+    setDialogDueDate(task.due_date);
+    setDialogAssigneeIds([task.assignee_id]);
+    setTaskDialogOpen(true);
+  }, []);
+
+  const handleDialogTeamChange = useCallback(
+    (team: TeamName) => {
+      setDialogTeam(team);
+      if (dialogMode === "create") {
+        lastTeamRef.current = team;
+        setDialogAssigneeIds([]);
+      }
+    },
+    [dialogMode]
   );
 
-  const filteredDone = useMemo(() => filtered.filter((t) => t.status === "done").length, [filtered]);
-  const filteredRate = filtered.length > 0 ? Math.round((filteredDone / filtered.length) * 100) : 0;
-  const filteredReview = useMemo(() => filtered.filter((t) => t.status === "review").length, [filtered]);
-  const filteredOverdue = useMemo(() => filtered.filter(isOverdue).length, [filtered]);
-
-  const handleAssign = async (e: React.FormEvent) => {
+  const handleDialogSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newTask.assignee_id) { toast.error("Please select an assignee"); return; }
-    if (!newTask.task_name.trim()) { toast.error("Please enter a task name"); return; }
-    setSubmitting(true);
-    try {
-      const { task: inserted, notification } = await insertTask({ ...newTask, guild_id: GUILD_ID });
-      toast.success("✅ Task assigned");
 
-      // Notification warnings
-      if (notification && typeof notification === "object") {
-        const n = notification as Record<string, unknown>;
-        const assigneeName = memberMap.get(inserted.assignee_id) ?? inserted.assignee_id;
-        if (n.method === "dm") {
-          toast.warning(
-            `⚠️ No reminder channel set for ${assigneeName}. They were notified via DM but may not receive it if DMs are disabled. Use /setchannel in Discord to set a channel for them.`,
-            { duration: 8000 }
-          );
-        } else if (n.notified === false) {
-          toast.error(
-            `❌ Could not notify ${assigneeName}. No reminder channel is set and their DMs are disabled. Use /setchannel in Discord to ensure they receive future assignments.`,
-            { duration: 10000 }
-          );
-        }
+    if (!dialogTeam) {
+      toast.error("Please select a team");
+      return;
+    }
+
+    if (dialogMode === "create") {
+      if (dialogAssigneeIds.length === 0) {
+        toast.error("Please select an assignee");
+        return;
       }
+      if (!dialogTitle.trim()) {
+        toast.error("Please enter a task name");
+        return;
+      }
+      setSubmitting(true);
+      try {
+        const [assignee_id, ...collaborator_ids] = dialogAssigneeIds;
+        const { task: inserted, notification } = await insertTask({
+          assignee_id,
+          task_name: dialogTitle,
+          due_date: dialogDueDate,
+          status: dialogStatus,
+          team: dialogTeam,
+          collaborator_ids,
+          guild_id: GUILD_ID,
+        });
+        toast.success("✅ Task assigned");
 
-      setAssignSheetOpen(false);
-      setNewTask(defaultNewTask);
-      setCollabPickerValue("");
-      await load();
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : "Unknown error";
-      console.error("Assign task failed:", JSON.stringify(err, null, 2));
-      toast.error(`❌ Failed to assign task: ${msg}`);
-    } finally {
-      setSubmitting(false);
+        if (notification && typeof notification === "object") {
+          const n = notification as Record<string, unknown>;
+          const assigneeName = memberMap.get(inserted.assignee_id) ?? inserted.assignee_id;
+          if (n.method === "dm") {
+            toast.warning(
+              `⚠️ No reminder channel set for ${assigneeName}. They were notified via DM but may not receive it if DMs are disabled. Use /setchannel in Discord to set a channel for them.`,
+              { duration: 8000 }
+            );
+          } else if (n.notified === false) {
+            toast.error(
+              `❌ Could not notify ${assigneeName}. No reminder channel is set and their DMs are disabled. Use /setchannel in Discord to ensure they receive future assignments.`,
+              { duration: 10000 }
+            );
+          }
+        }
+
+        setTaskDialogOpen(false);
+        await load();
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : "Unknown error";
+        console.error("Assign task failed:", JSON.stringify(err, null, 2));
+        toast.error(`❌ Failed to assign task: ${msg}`);
+      } finally {
+        setSubmitting(false);
+      }
+    } else {
+      if (!editingTaskId) return;
+      setSubmitting(true);
+      try {
+        await updateTask(editingTaskId, {
+          assignee_id: dialogAssigneeIds[0],
+          task_name: dialogTitle,
+          due_date: dialogDueDate,
+          status: dialogStatus,
+          team: dialogTeam,
+        });
+        toast.success("✅ Task updated");
+        setTaskDialogOpen(false);
+        setEditingTaskId(null);
+        await load();
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : "Unknown error";
+        toast.error(`❌ Failed to update task: ${msg}`);
+      } finally {
+        setSubmitting(false);
+      }
     }
   };
 
-  const handleEdit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!editingTask) return;
-    setSubmitting(true);
-    try {
-      await updateTask(editingTask.id, {
-        assignee_id: editingTask.assignee_id,
-        task_name: editingTask.task_name,
-        due_date: editingTask.due_date,
-        status: editingTask.status,
-        team: editingTask.team,
-      });
-      toast.success("✅ Task updated");
-      setEditSheetOpen(false);
-      setEditingTask(null);
-      await load();
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : "Unknown error";
-      toast.error(`❌ Failed to update task: ${msg}`);
-    } finally {
-      setSubmitting(false);
-    }
-  };
+  const requestDelete = useCallback((task: DBTask) => {
+    setDeletingTasks([task]);
+    setDeleteDialogOpen(true);
+  }, []);
 
-  const handleDelete = async () => {
-    if (!deletingTask) return;
+  const handleBulkDelete = useCallback(() => {
+    const toDelete = tasks.filter((t) => selectedIds.has(t.id));
+    setDeletingTasks(toDelete);
+    setDeleteDialogOpen(true);
+  }, [tasks, selectedIds]);
+
+  const handleConfirmDelete = async () => {
+    if (deletingTasks.length === 0) return;
     setSubmitting(true);
     try {
-      await deleteTask(deletingTask.id);
-      toast.success("🗑️ Task deleted");
+      await Promise.all(deletingTasks.map((t) => deleteTask(t.id)));
+      toast.success(deletingTasks.length === 1 ? "🗑️ Task deleted" : `🗑️ ${deletingTasks.length} tasks deleted`);
       setDeleteDialogOpen(false);
-      setDeletingTask(null);
+      setDeletingTasks([]);
+      setSelectedIds(new Set());
       await load();
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Unknown error";
@@ -311,6 +328,12 @@ function TasksPageContent() {
       setSubmitting(false);
     }
   };
+
+  const onRejectTask = useCallback((task: DBTask) => {
+    setRejectingTask(task);
+    setRejectionReason("");
+    setRejectDialogOpen(true);
+  }, []);
 
   const handleReject = async () => {
     if (!rejectingTask) return;
@@ -329,24 +352,8 @@ function TasksPageContent() {
     }
   };
 
-  const onEditTask = useCallback(
-    (task: Task) => {
-      const dbTask = tasks.find((t) => t.id === task.id);
-      if (dbTask) { setEditingTask({ ...dbTask }); setEditSheetOpen(true); }
-    },
-    [tasks]
-  );
-
-  const onDeleteTask = useCallback(
-    (task: Task) => {
-      const dbTask = tasks.find((t) => t.id === task.id);
-      if (dbTask) { setDeletingTask(dbTask); setDeleteDialogOpen(true); }
-    },
-    [tasks]
-  );
-
   const onApproveTask = useCallback(
-    async (task: Task) => {
+    async (task: DBTask) => {
       try {
         await updateTask(task.id, { status: "done", rejection_reason: null });
         toast.success("✅ Task approved");
@@ -358,459 +365,240 @@ function TasksPageContent() {
     [load]
   );
 
-  const onRejectTask = useCallback((task: Task) => {
-    setRejectingTask(task);
-    setRejectionReason("");
-    setRejectDialogOpen(true);
+  const handleReassign = useCallback(
+    async (task: DBTask, userId: string) => {
+      try {
+        await updateTask(task.id, { assignee_id: userId });
+        toast.success("✅ Task reassigned");
+        await load();
+      } catch (err) {
+        toast.error(`Failed to reassign: ${err instanceof Error ? err.message : "Unknown error"}`);
+      }
+    },
+    [load]
+  );
+
+  const handleBulkReassign = useCallback(
+    async (userId: string) => {
+      const ids = Array.from(selectedIds);
+      try {
+        await Promise.all(ids.map((id) => updateTask(id, { assignee_id: userId })));
+        toast.success(`✅ Reassigned ${ids.length} task${ids.length !== 1 ? "s" : ""}`);
+        setSelectedIds(new Set());
+        await load();
+      } catch {
+        toast.error("Failed to reassign some tasks.");
+      }
+    },
+    [selectedIds, load]
+  );
+
+  const handleBulkSetStatus = useCallback(
+    async (status: TaskStatus) => {
+      const ids = Array.from(selectedIds);
+      try {
+        await Promise.all(ids.map((id) => updateTask(id, { status })));
+        toast.success(`✅ Updated ${ids.length} task${ids.length !== 1 ? "s" : ""}`);
+        setSelectedIds(new Set());
+        await load();
+      } catch {
+        toast.error("Failed to update some tasks.");
+      }
+    },
+    [selectedIds, load]
+  );
+
+  const toggleSelect = useCallback((id: number) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
   }, []);
 
-  const renderAssignee = useCallback(
-    (task: Task) => {
-      const dbTask = tasks.find((t) => t.id === task.id);
-      const isResolved = dbTask ? memberIdSet.has(dbTask.assignee_id) : false;
-      return (
-        <span className={cn("block max-w-[140px] truncate text-xs", isResolved ? "text-foreground" : "text-muted-foreground font-mono")}>
-          {task.assignee}
-        </span>
-      );
-    },
-    [tasks, memberIdSet]
-  );
+  const toggleSelectAll = useCallback(() => {
+    setSelectedIds((prev) => {
+      const pageIds = paginated.map((t) => t.id);
+      const allSelected = pageIds.length > 0 && pageIds.every((id) => prev.has(id));
+      const next = new Set(prev);
+      if (allSelected) pageIds.forEach((id) => next.delete(id));
+      else pageIds.forEach((id) => next.add(id));
+      return next;
+    });
+  }, [paginated]);
 
-  const renderDueDate = useCallback(
-    (task: Task) => {
-      const dbTask = tasks.find((t) => t.id === task.id);
-      return (
-        <span className={dbTask ? getDueDateClass(dbTask) : "text-muted-foreground text-sm"}>
-          {task.dueDate}
-        </span>
-      );
-    },
-    [tasks]
-  );
+  const handleOpenReview = useCallback(() => {
+    setStatusFilter("review");
+    tableRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, []);
 
-  const renderTeam = useCallback(
-    (task: Task) => {
-      const dbTask = tasks.find((t) => t.id === task.id);
-      return dbTask?.team ? <TeamBadge team={dbTask.team} /> : <span className="text-muted-foreground">—</span>;
-    },
-    [tasks]
-  );
+  const handleExport = useCallback(() => {
+    const header = ["id", "task", "team", "assignee", "status", "due_date"];
+    const rows = sorted.map((t) => [
+      t.id,
+      t.task_name,
+      TEAM_STYLE[t.team].label,
+      memberMap.get(t.assignee_id) ?? t.assignee_id,
+      t.status,
+      t.due_date ?? "",
+    ]);
+    const csv = [header, ...rows]
+      .map((row) => row.map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(","))
+      .join("\n");
+    const blob = new Blob([csv], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "tasks.csv";
+    a.click();
+    URL.revokeObjectURL(url);
+  }, [sorted, memberMap]);
 
-  const renderCollaborators = useCallback(
-    (task: Task) => {
-      const collabs = collabByTask.get(task.id);
-      if (!collabs || collabs.length === 0) return null;
-      return (
-        <div className="flex flex-wrap gap-1">
-          {collabs.map((c) => (
-            <span key={c.user_id} className="text-xs text-muted-foreground">
-              {memberMap.get(c.user_id) ?? c.user_id}
-            </span>
-          ))}
-        </div>
-      );
-    },
-    [collabByTask, memberMap]
-  );
-
-  // Members filtered to the panel's selected team (for assignee + collab dropdowns)
-  const filteredMembersForPanel = useMemo(() => {
-    return newTask.team
-      ? teamMembers.filter((m) => m.team === newTask.team)
-      : teamMembers;
-  }, [teamMembers, newTask.team]);
-
-  // Collaborator options = panel-team members not already selected and not the assignee
-  const availableCollabOptions = useMemo(() => {
-    const selected = new Set(newTask.collaborator_ids);
-    return filteredMembersForPanel
-      .filter((m) => !selected.has(m.user_id) && m.user_id !== newTask.assignee_id)
-      .map((m) => ({ label: m.display_name || m.user_id, value: m.user_id }));
-  }, [filteredMembersForPanel, newTask.collaborator_ids, newTask.assignee_id]);
+  const editingCollaboratorNames = editingTaskId
+    ? (collabByTask.get(editingTaskId) ?? [])
+        .filter((c) => c.user_id !== dialogAssigneeIds[0])
+        .map((c) => memberMap.get(c.user_id) ?? c.user_id)
+    : [];
 
   return (
-    <div className="space-y-6 page-fade-in">
-      {/* Page header */}
-      <div className="mb-6">
-        <h1 className="text-2xl font-semibold text-foreground">Tasks</h1>
-        <p className="text-sm text-muted-foreground mt-1">
-          {tasks.length} task{tasks.length !== 1 ? "s" : ""} total
-        </p>
-      </div>
+    <div className="pb-16 space-y-5">
+      <PageHeader
+        title="Tasks"
+        subtitle="Everything in flight across Growth, Tech, Operations, and Progirls."
+        count={sorted.length}
+        actions={
+          <>
+            <Button variant="secondary" size="default" onClick={handleExport}>
+              <Download className="size-[15px]" />
+              Export
+            </Button>
+            <Button size="default" onClick={openCreateDialog}>
+              <Plus className="size-[15px]" />
+              New task
+            </Button>
+          </>
+        }
+        rail={<ThroughputRail counts={statusCounts} height={4} />}
+      />
 
-      {/* Review banner */}
-      {reviewCount > 0 && (
-        <motion.div
-          initial={{ opacity: 0, y: -8 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="flex items-center justify-between px-5 py-3 rounded-xl bg-indigo-950/60 border border-indigo-700/50"
-        >
-          <span className="text-sm text-indigo-300 font-medium">
-            ⚠️ Tasks awaiting review:{" "}
-            {(["growth", "tech", "operations", "progirls"] as TeamName[])
-              .filter((team) => (reviewByTeam[team] ?? 0) > 0)
-              .map((team) => `${team.charAt(0).toUpperCase() + team.slice(1)}: ${reviewByTeam[team]}`)
-              .join(" · ")}
-          </span>
-          <Button
-            size="sm"
-            className="h-7 px-3 text-xs bg-indigo-700 hover:bg-indigo-600 text-white border-0"
-            onClick={() => setFilter("review")}
-          >
-            View
-          </Button>
-        </motion.div>
-      )}
+      <TaskAnalyticsBar counts={statusCounts} teamCounts={teamCounts} overdue={overdueCount} />
 
-      {/* Analytics row */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        {[
-          { label: "Total Tasks", value: filtered.length },
-          { label: "Completion Rate", value: `${filteredRate}%` },
-          { label: "In Review", value: filteredReview },
-          { label: "Overdue", value: filteredOverdue, danger: filteredOverdue > 0 },
-        ].map(({ label, value, danger }) => (
-          <div key={label} className="bg-card border border-border rounded-xl p-4 shadow-sm">
-            <p className="text-xs text-muted-foreground font-medium">{label}</p>
-            <p className={cn("text-2xl font-bold mt-1", danger ? "text-red-400" : "text-foreground")}>
-              {value}
-            </p>
-          </div>
-        ))}
-      </div>
+      <ReviewBanner count={pendingReviewCount} onOpen={handleOpenReview} />
 
-      {/* Team filter tabs */}
-      <div className="flex items-center gap-1 bg-muted rounded-lg p-1 w-fit">
-        {TEAM_FILTERS.map(({ value, label }) => (
-          <button
-            key={value}
-            onClick={() => setTeamFilter(value)}
-            className={cn(
-              "px-3 py-1.5 rounded-md text-sm font-medium transition-colors",
-              teamFilter === value && value === "all"
-                ? "bg-primary text-primary-foreground"
-                : teamFilter === value
-                ? teamTabClass(value as TeamName, true)
-                : "text-muted-foreground hover:text-foreground"
-            )}
-          >
-            {label}
-          </button>
-        ))}
-      </div>
+      <TaskFilters
+        search={search}
+        onSearchChange={setSearch}
+        teamFilter={teamFilter}
+        onTeamFilterChange={setTeamFilter}
+        statusFilter={statusFilter}
+        onStatusFilterChange={setStatusFilter}
+        assigneeFilter={assigneeFilter}
+        onAssigneeFilterChange={setAssigneeFilter}
+        teamMembers={teamMembers}
+        sort={sort}
+        onSortChange={setSort}
+      />
 
-      {/* Top bar */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3">
-        <div className="relative max-w-xs w-full">
-          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            className="pl-9"
-            placeholder="Search tasks or assignee…"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-          />
-        </div>
-
-        <div className="flex items-center gap-1 bg-muted rounded-lg p-1 flex-wrap">
-          {(Object.keys(filterLabels) as FilterStatus[]).map((f) => (
-            <button
-              key={f}
-              onClick={() => setFilter(f)}
-              className={cn(
-                "px-3 py-1.5 rounded-md text-sm font-medium transition-colors",
-                filter === f ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"
-              )}
-            >
-              {filterLabels[f]}
-            </button>
-          ))}
-        </div>
-
-        <Button
-          className="ml-auto h-10 bg-primary text-primary-foreground hover:bg-primary/90 font-medium gap-2 px-4"
-          onClick={() => {
-            if (lastTeamRef.current) {
-              setNewTask((p) => ({ ...p, team: lastTeamRef.current! }));
-            }
-            setAssignSheetOpen(true);
-          }}
-        >
-          <Plus size={15} />
-          Assign Task
-        </Button>
-      </div>
-
-      {/* Task table */}
-      {loading ? (
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          className="flex items-center justify-center py-24 text-muted-foreground text-sm"
-        >
-          Loading tasks…
-        </motion.div>
-      ) : (
-        <TaskList
-          tasks={displayTasks}
-          onEdit={onEditTask}
-          onDelete={onDeleteTask}
+      <div ref={tableRef}>
+        <TaskTable
+          tasks={paginated}
+          loading={loading}
+          hasAnyTasks={tasks.length > 0}
+          hasActiveFilters={hasActiveFilters}
+          memberMap={memberMap}
+          memberTeamMap={memberTeamMap}
+          collabByTask={collabByTask}
+          teamMembers={teamMembers}
+          selectedIds={selectedIds}
+          onToggleSelect={toggleSelect}
+          onToggleSelectAll={toggleSelectAll}
+          onEdit={openEditDialog}
+          onReassign={handleReassign}
+          onDeleteRequest={requestDelete}
           onApprove={onApproveTask}
           onReject={onRejectTask}
-          renderDueDate={renderDueDate}
-          renderAssignee={renderAssignee}
-          renderTeam={renderTeam}
-          renderCollaborators={renderCollaborators}
-          emptyTitle="No tasks found."
-          emptySubtitle="Assign a task to get started"
+          onClearFilters={() => {
+            setTeamFilter("all");
+            setStatusFilter("all");
+            setAssigneeFilter("");
+            setSearch("");
+          }}
+          onCreateTask={openCreateDialog}
+          page={clampedPage}
+          pageSize={PAGE_SIZE}
+          totalCount={sorted.length}
+          onPageChange={setPage}
+          onBulkDelete={handleBulkDelete}
+          onBulkSetStatus={handleBulkSetStatus}
+          onBulkReassign={handleBulkReassign}
+          onClearSelection={() => setSelectedIds(new Set())}
         />
-      )}
+      </div>
 
-      {/* Assign Task Sheet */}
-      <Sheet open={assignSheetOpen} onOpenChange={setAssignSheetOpen}>
-        <SheetContent className="bg-card border-border p-0 gap-0 overflow-y-auto">
-          <SheetHeader className="px-6 pt-6 pb-4 border-b border-border">
-            <SheetTitle className="text-xl font-semibold">Assign Task</SheetTitle>
-          </SheetHeader>
-          <form onSubmit={handleAssign} className="px-6 py-6 space-y-6">
-            <div>
-              <Label className="text-sm font-medium text-muted-foreground mb-2 block">Team</Label>
-              <AnimatedDropdown
-                items={TEAM_OPTIONS}
-                value={newTask.team}
-                onSelect={(v) => {
-                  const team = v as TeamName;
-                  lastTeamRef.current = team;
-                  setNewTask((p) => ({ ...p, team, assignee_id: "", collaborator_ids: [] }));
-                }}
-              />
-            </div>
-            <div>
-              <Label className="text-sm font-medium text-muted-foreground mb-2 block">Assignee</Label>
-              <Combobox
-                items={filteredMembersForPanel.map((m) => ({ label: m.display_name || m.user_id, value: m.user_id }))}
-                value={newTask.assignee_id || undefined}
-                onSelect={(v) => setNewTask((p) => ({ ...p, assignee_id: v }))}
-                onClear={() => setNewTask((p) => ({ ...p, assignee_id: "" }))}
-                placeholder={loadingMembers ? "Loading members…" : "Search or select member…"}
-                loading={loadingMembers && teamMembers.length === 0}
-              />
-              {newTask.team && (
-                <p className="text-xs text-muted-foreground mt-1">
-                  Showing {filteredMembersForPanel.length} member{filteredMembersForPanel.length !== 1 ? "s" : ""} from {newTask.team} team
-                </p>
-              )}
-            </div>
-            <div>
-              <Label className="text-sm font-medium text-muted-foreground mb-2 block">Also assign to</Label>
-              <Combobox
-                items={availableCollabOptions}
-                value={collabPickerValue || undefined}
-                onSelect={(v) => {
-                  setNewTask((p) => ({ ...p, collaborator_ids: [...p.collaborator_ids, v] }));
-                  setCollabPickerValue("");
-                }}
-                onClear={() => setCollabPickerValue("")}
-                placeholder="Search or add collaborator…"
-              />
-              <p className="text-xs text-muted-foreground mt-1.5">
-                These members will also receive this task and must each submit before it enters review.
-              </p>
-              {newTask.collaborator_ids.length > 0 && (
-                <div className="flex flex-wrap gap-1.5 mt-2">
-                  {newTask.collaborator_ids.map((uid) => (
-                    <span
-                      key={uid}
-                      className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs bg-muted border border-border text-foreground"
-                    >
-                      {memberMap.get(uid) ?? uid}
-                      <button
-                        type="button"
-                        onClick={() => setNewTask((p) => ({ ...p, collaborator_ids: p.collaborator_ids.filter((id) => id !== uid) }))}
-                        className="ml-0.5 text-muted-foreground hover:text-foreground"
-                      >
-                        <X size={11} />
-                      </button>
-                    </span>
-                  ))}
-                </div>
-              )}
-            </div>
-            <div>
-              <Label className="text-sm font-medium text-muted-foreground mb-2 block">Task Name</Label>
-              <Input
-                placeholder="Describe the task…"
-                value={newTask.task_name}
-                onChange={(e) => setNewTask((p) => ({ ...p, task_name: e.target.value }))}
-                required
-              />
-            </div>
-            <div>
-              <Label className="text-sm font-medium text-muted-foreground mb-2 block">Due Date</Label>
-              <Input
-                type="date"
-                value={newTask.due_date ?? ""}
-                onChange={(e) => setNewTask((p) => ({ ...p, due_date: e.target.value || null }))}
-                className="[color-scheme:dark]"
-              />
-            </div>
-            <div>
-              <Label className="text-sm font-medium text-muted-foreground mb-2 block">Status</Label>
-              <Select
-                value={newTask.status}
-                onValueChange={(v) => setNewTask((p) => ({ ...p, status: v as TaskStatus }))}
-              >
-                <SelectTrigger className="h-10">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="todo">Todo</SelectItem>
-                  <SelectItem value="in_progress">In Progress</SelectItem>
-                  <SelectItem value="review">In Review</SelectItem>
-                  <SelectItem value="done">Done</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <Button
-              type="submit"
-              className="w-full h-10 bg-primary text-primary-foreground hover:bg-primary/90 font-medium mt-8"
-              disabled={submitting}
-            >
-              {submitting ? "Assigning…" : "Assign Task"}
-            </Button>
-          </form>
-        </SheetContent>
-      </Sheet>
+      <TaskDialog
+        open={taskDialogOpen}
+        onOpenChange={setTaskDialogOpen}
+        mode={dialogMode}
+        submitting={submitting}
+        onSubmit={handleDialogSubmit}
+        teamMembers={teamMembers}
+        memberMap={memberMap}
+        loadingMembers={loadingMembers}
+        team={dialogTeam}
+        onTeamChange={handleDialogTeamChange}
+        status={dialogStatus}
+        onStatusChange={setDialogStatus}
+        title={dialogTitle}
+        onTitleChange={setDialogTitle}
+        dueDate={dialogDueDate}
+        onDueDateChange={setDialogDueDate}
+        assigneeIds={dialogAssigneeIds}
+        onAssigneeIdsChange={setDialogAssigneeIds}
+        readOnlyCollaboratorNames={editingCollaboratorNames}
+      />
 
-      {/* Edit Task Sheet */}
-      <Sheet open={editSheetOpen} onOpenChange={setEditSheetOpen}>
-        <SheetContent className="bg-card border-border p-0 gap-0 overflow-y-auto">
-          <SheetHeader className="px-6 pt-6 pb-4 border-b border-border">
-            <SheetTitle className="text-xl font-semibold">Edit Task</SheetTitle>
-          </SheetHeader>
-          {editingTask && (
-            <form onSubmit={handleEdit} className="px-6 py-6 space-y-6">
-              <div>
-                <Label className="text-sm font-medium text-muted-foreground mb-2 block">Team</Label>
-                <AnimatedDropdown
-                  items={TEAM_OPTIONS}
-                  value={editingTask.team}
-                  onSelect={(v) => setEditingTask((p) => p && { ...p, team: v as TeamName })}
-                />
-              </div>
-              <div>
-                <Label className="text-sm font-medium text-muted-foreground mb-2 block">Assignee</Label>
-                <AnimatedDropdown
-                  items={[
-                    ...(!memberIdSet.has(editingTask.assignee_id)
-                      ? [{ label: `${editingTask.assignee_id} (not on team)`, value: editingTask.assignee_id }]
-                      : []),
-                    ...teamMembers.map((m) => ({ label: m.display_name || m.user_id, value: m.user_id })),
-                  ]}
-                  value={editingTask.assignee_id}
-                  onSelect={(v) => setEditingTask((p) => p && { ...p, assignee_id: v })}
-                  placeholder="Select team member"
-                  loading={loadingMembers && teamMembers.length === 0}
-                />
-              </div>
-              <div>
-                <Label className="text-sm font-medium text-muted-foreground mb-2 block">Task Name</Label>
-                <Input
-                  value={editingTask.task_name}
-                  onChange={(e) => setEditingTask((p) => p && { ...p, task_name: e.target.value })}
-                  required
-                />
-              </div>
-              <div>
-                <Label className="text-sm font-medium text-muted-foreground mb-2 block">Due Date</Label>
-                <Input
-                  type="date"
-                  value={editingTask.due_date ?? ""}
-                  onChange={(e) => setEditingTask((p) => p && { ...p, due_date: e.target.value || null })}
-                  className="[color-scheme:dark]"
-                />
-                {editingTask.due_date && (
-                  <button
-                    type="button"
-                    className="mt-2 text-xs text-destructive hover:underline"
-                    onClick={() => setEditingTask((p) => p && { ...p, due_date: null })}
-                  >
-                    Remove Due Date
-                  </button>
-                )}
-              </div>
-              <div>
-                <Label className="text-sm font-medium text-muted-foreground mb-2 block">Status</Label>
-                <Select
-                  value={editingTask.status}
-                  onValueChange={(v) => setEditingTask((p) => p && { ...p, status: v as TaskStatus })}
-                >
-                  <SelectTrigger className="h-10">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="todo">Todo</SelectItem>
-                    <SelectItem value="in_progress">In Progress</SelectItem>
-                    <SelectItem value="review">In Review</SelectItem>
-                    <SelectItem value="done">Done</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <Button
-                type="submit"
-                className="w-full h-10 bg-primary text-primary-foreground hover:bg-primary/90 font-medium mt-8"
-                disabled={submitting}
-              >
-                {submitting ? "Saving…" : "Save Changes"}
-              </Button>
-            </form>
-          )}
-        </SheetContent>
-      </Sheet>
-
-      {/* Delete Confirmation Dialog */}
+      {/* Delete confirmation */}
       <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
-        <DialogContent className="bg-card border border-border">
+        <DialogContent>
           <DialogHeader>
-            <DialogTitle className="text-base font-semibold">Delete task #{deletingTask?.id}?</DialogTitle>
+            <DialogTitle>Delete this task?</DialogTitle>
           </DialogHeader>
-          <p className="text-sm text-muted-foreground -mt-1">
-            &ldquo;{deletingTask?.task_name}&rdquo; will be permanently removed.
+          <p className="t-body-sm text-[#6E7686]">
+            This removes the task for everyone assigned to it. This cannot be undone.
           </p>
-          <DialogFooter className="gap-2 sm:gap-2 -mx-0 -mb-0 border-0 bg-transparent p-0 pt-2">
-            <Button variant="outline" className="h-9" onClick={() => setDeleteDialogOpen(false)}>Cancel</Button>
-            <Button className="h-9 bg-destructive/90 text-white hover:bg-destructive" onClick={handleDelete} disabled={submitting}>
-              {submitting ? "Deleting…" : "Delete"}
+          <DialogFooter>
+            <Button variant="secondary" onClick={() => setDeleteDialogOpen(false)}>
+              Cancel
+            </Button>
+            <Button variant="destructive" onClick={handleConfirmDelete} loading={submitting}>
+              Delete task
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
-      {/* Reject Dialog */}
+      {/* Reject / send back */}
       <Dialog open={rejectDialogOpen} onOpenChange={setRejectDialogOpen}>
-        <DialogContent className="bg-card border border-border">
+        <DialogContent>
           <DialogHeader>
-            <DialogTitle className="text-base font-semibold">Send back task #{rejectingTask?.id}?</DialogTitle>
+            <DialogTitle>Send back &ldquo;{rejectingTask?.task_name}&rdquo;?</DialogTitle>
           </DialogHeader>
-          <p className="text-sm text-muted-foreground -mt-1 mb-4">
-            &ldquo;{rejectingTask?.task}&rdquo; will be moved back to In Progress.
-          </p>
+          <p className="t-body-sm text-[#6E7686]">This moves the task back to In progress.</p>
           <div>
-            <Label className="text-sm font-medium text-muted-foreground mb-2 block">Rejection Reason</Label>
+            <Label className="t-label text-[#A7B0C0] mb-1.5 block">Reason</Label>
             <Input
               placeholder="What needs to be fixed?"
               value={rejectionReason}
               onChange={(e) => setRejectionReason(e.target.value)}
             />
           </div>
-          <DialogFooter className="gap-2 sm:gap-2 -mx-0 -mb-0 border-0 bg-transparent p-0 pt-2">
-            <Button variant="outline" className="h-9" onClick={() => setRejectDialogOpen(false)}>Cancel</Button>
-            <Button
-              className="h-9 bg-primary text-primary-foreground hover:bg-primary/90"
-              onClick={handleReject}
-              disabled={submitting}
-            >
-              {submitting ? "Sending…" : "↩️ Send Back"}
+          <DialogFooter>
+            <Button variant="secondary" onClick={() => setRejectDialogOpen(false)}>
+              Cancel
+            </Button>
+            <Button onClick={handleReject} loading={submitting}>
+              Send back
             </Button>
           </DialogFooter>
         </DialogContent>
