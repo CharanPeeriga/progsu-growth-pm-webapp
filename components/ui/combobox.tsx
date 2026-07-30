@@ -1,12 +1,14 @@
 'use client'
 
 import { useState, useRef, useEffect, useCallback } from 'react'
-import { Check, X, ChevronDown } from 'lucide-react'
+import { Check, X, ChevronsUpDown } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 export interface ComboboxItem {
   label: string
   value: string
+  hint?: string
+  color?: string
 }
 
 interface ComboboxProps {
@@ -79,15 +81,18 @@ export default function Combobox({
   return (
     <div ref={wrapperRef} className={cn('relative w-full', className)}>
       {/* Input trigger */}
-      <div className={cn(
-        'flex h-10 w-full items-center rounded-lg border border-input bg-transparent px-3',
-        'text-sm transition-colors dark:bg-input/20',
-        open && 'border-ring ring-2 ring-ring/20',
-      )}>
+      <div
+        className={cn(
+          'flex h-9 w-full items-center justify-between rounded-control border border-[rgba(255,255,255,0.09)] bg-[#12151C] px-3',
+          'text-[13.5px] transition-[border-color,box-shadow,background] duration-[160ms] ease-standard',
+          'hover:border-[rgba(255,255,255,0.14)]',
+          open && 'border-[rgba(107,138,253,0.55)] shadow-[0_0_0_3px_rgba(107,138,253,0.18)]'
+        )}
+      >
         <input
           ref={inputRef}
           type="text"
-          className="flex-1 bg-transparent outline-none placeholder:text-muted-foreground text-foreground"
+          className="flex-1 bg-transparent outline-none placeholder:text-[#4E5665] text-[#E8EBF2]"
           placeholder={loading ? 'Loading members…' : placeholder}
           value={query}
           disabled={loading}
@@ -101,29 +106,23 @@ export default function Combobox({
           <button
             type="button"
             onClick={handleClear}
-            className="ml-1 shrink-0 text-muted-foreground hover:text-foreground transition-colors"
+            className="ml-1 shrink-0 text-[#6E7686] hover:text-[#E8EBF2] transition-colors"
           >
             <X size={14} />
           </button>
         ) : (
-          <ChevronDown
+          <ChevronsUpDown
             size={14}
-            className={cn(
-              'shrink-0 text-muted-foreground transition-transform duration-200',
-              open && 'rotate-180',
-            )}
+            className="shrink-0 text-[#6E7686]"
           />
         )}
       </div>
 
       {/* Dropdown */}
       {open && !loading && (
-        <div className={cn(
-          'absolute left-0 top-[calc(100%+4px)] z-50 w-full',
-          'max-h-60 overflow-y-auto rounded-lg border border-border bg-card shadow-xl',
-        )}>
+        <div className="absolute left-0 top-[calc(100%+4px)] z-50 w-full max-h-[264px] overflow-y-auto rounded-[12px] border border-[rgba(255,255,255,0.09)] bg-[#171B23] shadow-popover p-1">
           {filtered.length === 0 ? (
-            <div className="px-3 py-2.5 text-sm text-muted-foreground">
+            <div className="py-6 text-center text-[13px] text-[#6E7686]">
               {query ? 'No members match' : 'No members found'}
             </div>
           ) : (
@@ -134,16 +133,25 @@ export default function Combobox({
                 onMouseDown={(e) => e.preventDefault()} // prevent input blur before click
                 onClick={() => handleSelect(item)}
                 className={cn(
-                  'flex w-full items-center gap-2 px-3 py-2.5 text-left text-sm transition-colors duration-100',
+                  'relative flex h-8 w-full cursor-pointer items-center gap-2 rounded-chip px-2.5 text-left text-[13px] transition-colors duration-100',
                   item.value === value
-                    ? 'bg-primary/10 text-primary'
-                    : 'text-foreground hover:bg-muted/50',
+                    ? 'bg-[rgba(107,138,253,0.10)] text-[#C7D1FE]'
+                    : 'text-[#A7B0C0] hover:bg-[rgba(255,255,255,0.05)] hover:text-[#E8EBF2]'
                 )}
               >
-                <span className="flex size-3.5 shrink-0 items-center justify-center">
-                  {item.value === value && <Check size={13} />}
-                </span>
-                {item.label}
+                {item.color && (
+                  <span
+                    className="size-1.5 shrink-0 rounded-full"
+                    style={{ backgroundColor: item.color }}
+                  />
+                )}
+                <span className="flex-1 truncate">{item.label}</span>
+                {item.hint && (
+                  <span className="t-caption text-[#6E7686] shrink-0">{item.hint}</span>
+                )}
+                {item.value === value && (
+                  <Check size={14} className="shrink-0 text-[#8099FE]" />
+                )}
               </button>
             ))
           )}
