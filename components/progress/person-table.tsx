@@ -13,7 +13,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import { TEAM_STYLE, type Status, type Team } from "@/lib/design"
+import { TEAM_STYLE, STATUS_STYLE, type Status, type Team } from "@/lib/design"
 
 export type PersonSort = "rate" | "assigned" | "done" | "overdue" | "name"
 
@@ -73,7 +73,7 @@ export function PersonTable({ rows, sort, onSortChange }: PersonTableProps) {
         <div className="overflow-x-auto">
           <table className="w-full border-collapse text-left">
             <thead>
-              <tr className="h-10 surface-glass !border-0 !border-b !border-b-[rgba(255,255,255,0.09)] rounded-none">
+              <tr className="h-10 bg-[#12151C] border-0 border-b border-b-[rgba(255,255,255,0.09)] rounded-none">
                 <th className="t-overline min-w-[220px] px-4 text-[#6E7686]">MEMBER</th>
                 <th className="t-overline w-[132px] px-4 text-[#6E7686]">TEAM</th>
                 <th className="t-overline w-[96px] px-4 text-[#6E7686]">ASSIGNED</th>
@@ -108,7 +108,7 @@ export function PersonTable({ rows, sort, onSortChange }: PersonTableProps) {
                       <span className="t-mono text-[#A7B0C0]">{p.assigned}</span>
                     </td>
                     <td className="w-[96px] px-4 align-middle">
-                      <span className="t-mono text-[#86EFAC]">{p.done}</span>
+                      <span className="t-mono" style={{ color: STATUS_STYLE.done.text }}>{p.done}</span>
                     </td>
                     <td className="w-[96px] px-4 align-middle">
                       <span className={`t-mono ${p.overdue > 0 ? "text-[#FCA5A5]" : "text-[#4E5665]"}`}>

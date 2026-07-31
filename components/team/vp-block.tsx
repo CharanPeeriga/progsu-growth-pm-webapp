@@ -39,7 +39,7 @@ export function VpBlock({ vps, members, vpRoles, onToggleVp }: VpBlockProps) {
   return (
     <>
       <section className="surface-card surface-featured halo-accent overflow-hidden p-6">
-        <div className="mb-5 flex items-center justify-between">
+        <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
           <div className="flex flex-col gap-1">
             <span className="t-overline text-[#8099FE]">Leadership</span>
             <h2 className="t-h2 text-[#E8EBF2]">Vice presidents</h2>
@@ -96,7 +96,7 @@ export function VpBlock({ vps, members, vpRoles, onToggleVp }: VpBlockProps) {
           </DialogHeader>
           <div className="flex max-h-[360px] flex-col gap-1 overflow-y-auto">
             {members.length === 0 && (
-              <p className="t-body-sm text-[#6E7686] py-6 text-center">No team members yet.</p>
+              <p className="t-body-sm text-[#A7B0C0] py-6 text-center">No team members yet.</p>
             )}
             {members.map((m) => {
               const name = m.display_name || m.user_id

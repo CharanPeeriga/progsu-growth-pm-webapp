@@ -19,7 +19,7 @@ import {
 import { TeamBreakdown, type TeamBreakdownRow } from "@/components/progress/team-breakdown";
 import { CompletionDonut } from "@/components/progress/completion-donut";
 import { PersonTable, type PersonRow, type PersonSort } from "@/components/progress/person-table";
-import { type Status } from "@/lib/design";
+import { STATUS_STYLE, type Status } from "@/lib/design";
 
 const GUILD_ID = process.env.NEXT_PUBLIC_DISCORD_GUILD_ID ?? "";
 const TEAM_ORDER: TeamName[] = ["growth", "tech", "operations", "progirls"];
@@ -185,7 +185,7 @@ export default function ProgressPage() {
               label="COMPLETION RATE"
               value={`${completionRate}%`}
               icon={Target}
-              tint="#22C55E"
+              tint={STATUS_STYLE.done.base}
               railPercent={completionRate}
             />
             <StatCard

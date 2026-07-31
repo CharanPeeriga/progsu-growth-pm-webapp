@@ -92,7 +92,7 @@ function TableCaption({
   return (
     <caption
       data-slot="table-caption"
-      className={cn("t-body-sm text-[#6E7686] mt-4", className)}
+      className={cn("t-body-sm text-[#A7B0C0] mt-4", className)}
       {...props}
     />
   )

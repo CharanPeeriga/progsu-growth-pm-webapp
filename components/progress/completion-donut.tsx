@@ -2,6 +2,8 @@
 
 import { motion } from "framer-motion"
 
+import { STATUS_STYLE } from "@/lib/design"
+
 interface CompletionDonutProps {
   rate: number
   done: number
@@ -24,7 +26,7 @@ export function CompletionDonut({ rate, done, total }: CompletionDonutProps) {
             <linearGradient id="ringGrad" x1="0" y1="0" x2="1" y2="1">
               <stop offset="0%" stopColor="#6B8AFD" />
               <stop offset="55%" stopColor="#8099FE" />
-              <stop offset="100%" stopColor="#22C55E" />
+              <stop offset="100%" stopColor={STATUS_STYLE.done.base} />
             </linearGradient>
           </defs>
           <circle
@@ -61,7 +63,7 @@ export function CompletionDonut({ rate, done, total }: CompletionDonutProps) {
         </div>
       </div>
 
-      <p className="t-caption max-w-[220px] text-center text-[#6E7686]">
+      <p className="t-caption max-w-[220px] text-center text-[#A7B0C0]">
         Share of tasks marked done in the selected range.
       </p>
     </div>

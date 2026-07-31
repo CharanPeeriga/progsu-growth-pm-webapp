@@ -19,6 +19,7 @@ import {
 import { MonthGrid, toDateStr } from "@/components/calendar/month-grid";
 import { DaySheet } from "@/components/calendar/day-sheet";
 import { TaskDialog } from "@/components/tasks/task-dialog";
+import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
 import { TEAM_STYLE, STATUS_STYLE, STATUS_ORDER, type Status } from "@/lib/design";
 
 const GUILD_ID = process.env.NEXT_PUBLIC_DISCORD_GUILD_ID ?? "";
@@ -181,7 +182,7 @@ export default function CalendarPage() {
           collaborator_ids,
           guild_id: GUILD_ID,
         });
-        toast.success("✅ Task assigned");
+        toast.success("✅ Task created");
       } else if (editingTaskId) {
         await updateTask(editingTaskId, {
           assignee_id: dialogAssigneeIds[0],
@@ -241,15 +242,39 @@ export default function CalendarPage() {
         actions={
           <>
             <div className="flex items-center gap-1 rounded-control border border-[rgba(255,255,255,0.09)] bg-[#12151C] p-0.5">
-              <Button variant="ghost" size="iconSm" onClick={() => navigate(-1)}>
-                <ChevronLeft className="size-[15px]" />
-              </Button>
+              <Tooltip>
+                <TooltipTrigger
+                  render={
+                    <Button
+                      variant="ghost"
+                      size="iconSm"
+                      aria-label="Previous month"
+                      onClick={() => navigate(-1)}
+                    />
+                  }
+                >
+                  <ChevronLeft className="size-[15px]" />
+                </TooltipTrigger>
+                <TooltipContent>Previous month</TooltipContent>
+              </Tooltip>
               <span className="min-w-[124px] px-1 text-center font-display text-[13.5px] font-semibold tracking-[-0.01em] text-[#E8EBF2]">
                 {MONTH_NAMES[anchor.getMonth()]} {anchor.getFullYear()}
               </span>
-              <Button variant="ghost" size="iconSm" onClick={() => navigate(1)}>
-                <ChevronRight className="size-[15px]" />
-              </Button>
+              <Tooltip>
+                <TooltipTrigger
+                  render={
+                    <Button
+                      variant="ghost"
+                      size="iconSm"
+                      aria-label="Next month"
+                      onClick={() => navigate(1)}
+                    />
+                  }
+                >
+                  <ChevronRight className="size-[15px]" />
+                </TooltipTrigger>
+                <TooltipContent>Next month</TooltipContent>
+              </Tooltip>
             </div>
             <Button variant="secondary" size="default" onClick={goToday}>
               Today

@@ -91,7 +91,7 @@ export function MemberDialog({
           <div className="flex items-center justify-between rounded-control border border-[rgba(255,255,255,0.09)] bg-[#12151C] px-3 py-2.5">
             <div className="flex flex-col gap-0.5">
               <span className="t-body-sm font-medium text-[#E8EBF2]">Vice president</span>
-              <span className="t-caption text-[#6E7686]">Gives review permissions for their team.</span>
+              <span className="t-caption text-[#A7B0C0]">Gives review permissions for their team.</span>
             </div>
             <Switch checked={makeVp} onCheckedChange={onMakeVpChange} />
           </div>
@@ -131,7 +131,7 @@ export function RemoveMemberDialog({
         <DialogHeader>
           <DialogTitle>Remove {name} from the roster?</DialogTitle>
         </DialogHeader>
-        <p className="t-body-sm text-[#6E7686]">
+        <p className="t-body-sm text-[#A7B0C0]">
           Their completed tasks stay in the record. Open tasks become unassigned.
         </p>
         <DialogFooter>

@@ -1,8 +1,7 @@
 "use client"
 
-import { motion } from "framer-motion"
-
 import { ThroughputRail } from "@/components/ui/throughput-rail"
+import { Stagger, StaggerItem } from "@/components/layout/stagger"
 import { TEAM_STYLE, STATUS_ORDER, STATUS_STYLE, type Status, type Team } from "@/lib/design"
 
 export interface TeamBreakdownRow {
@@ -25,8 +24,8 @@ export function TeamBreakdown({ teams, total }: TeamBreakdownProps) {
         <span className="t-caption text-[#6E7686]">{total} tasks total</span>
       </div>
 
-      <div className="flex flex-col gap-5">
-        {teams.map((row, i) => (
+      <Stagger className="flex flex-col gap-5">
+        {teams.map((row) => (
           <div key={row.team} className="flex flex-col gap-2.5">
             <div className="flex items-center justify-between gap-3">
               <div className="flex items-center gap-2.5">
@@ -46,17 +45,13 @@ export function TeamBreakdown({ teams, total }: TeamBreakdownProps) {
             {row.total === 0 ? (
               <div className="h-[6px] w-full rounded-full bg-[rgba(255,255,255,0.05)]" />
             ) : (
-              <motion.div
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                transition={{ duration: 0.5, delay: i * 0.06 }}
-              >
+              <StaggerItem fade>
                 <ThroughputRail counts={row.statusCounts} height={6} />
-              </motion.div>
+              </StaggerItem>
             )}
           </div>
         ))}
-      </div>
+      </Stagger>
 
       <div className="divider-grad my-5" />
       <div className="flex flex-wrap items-center gap-4">

@@ -12,6 +12,7 @@ import {
 import { Button } from "@/components/ui/button"
 import { TeamBadge } from "@/components/ui/team-badge"
 import { StatusBadge } from "@/components/ui/status-badge"
+import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from "@/components/ui/tooltip"
 import { STATUS_STYLE } from "@/lib/design"
 import type { DBTask } from "@/lib/types"
 
@@ -30,6 +31,7 @@ export function DaySheet({ open, onOpenChange, date, tasks, onEditTask, onAddTas
     : ""
 
   return (
+    <TooltipProvider>
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent className="flex flex-col">
         <SheetHeader>
@@ -54,9 +56,21 @@ export function DaySheet({ open, onOpenChange, date, tasks, onEditTask, onAddTas
               </p>
               <TeamBadge team={task.team} />
               <StatusBadge status={task.status} />
-              <Button variant="ghost" size="iconSm" onClick={() => onEditTask(task)}>
-                <Pencil />
-              </Button>
+              <Tooltip>
+                <TooltipTrigger
+                  render={
+                    <Button
+                      variant="ghost"
+                      size="iconSm"
+                      aria-label="Edit task"
+                      onClick={() => onEditTask(task)}
+                    />
+                  }
+                >
+                  <Pencil />
+                </TooltipTrigger>
+                <TooltipContent>Edit task</TooltipContent>
+              </Tooltip>
             </div>
           ))}
         </div>
@@ -68,5 +82,6 @@ export function DaySheet({ open, onOpenChange, date, tasks, onEditTask, onAddTas
         </SheetFooter>
       </SheetContent>
     </Sheet>
+    </TooltipProvider>
   )
 }

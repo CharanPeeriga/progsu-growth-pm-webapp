@@ -5,6 +5,7 @@ import { Dialog as SheetPrimitive } from "@base-ui/react/dialog"
 
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
+import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip"
 import { XIcon } from "lucide-react"
 
 function Sheet({ ...props }: SheetPrimitive.Root.Props) {
@@ -61,20 +62,26 @@ function SheetContent({
       >
         {children}
         {showCloseButton && (
-          <SheetPrimitive.Close
-            data-slot="sheet-close"
-            render={
-              <Button
-                variant="ghost"
-                className="absolute top-4 right-4 text-[#6E7686] hover:text-[#E8EBF2]"
-                size="iconSm"
-              />
-            }
-          >
-            <XIcon
-            />
-            <span className="sr-only">Close</span>
-          </SheetPrimitive.Close>
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <SheetPrimitive.Close
+                  data-slot="sheet-close"
+                  render={
+                    <Button
+                      variant="ghost"
+                      className="absolute top-4 right-4 text-[#6E7686] hover:text-[#E8EBF2]"
+                      size="iconSm"
+                      aria-label="Close"
+                    />
+                  }
+                />
+              }
+            >
+              <XIcon />
+            </TooltipTrigger>
+            <TooltipContent side="left">Close</TooltipContent>
+          </Tooltip>
         )}
       </SheetPrimitive.Popup>
     </SheetPortal>
@@ -118,7 +125,7 @@ function SheetDescription({
   return (
     <SheetPrimitive.Description
       data-slot="sheet-description"
-      className={cn("t-body-sm text-[#6E7686] mt-1", className)}
+      className={cn("t-body-sm text-[#A7B0C0] mt-1", className)}
       {...props}
     />
   )

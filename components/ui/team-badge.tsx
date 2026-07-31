@@ -24,18 +24,19 @@ export function TeamBadge({ team, className }: { team: TeamName; className?: str
 
 // Static (Tailwind-scannable) equivalents of the TEAM_STYLE tokens, for call sites
 // that need plain class strings (e.g. tab active-state) rather than inline styles.
+// These reference the same CSS custom properties as TEAM_STYLE, not duplicated hex.
 const TEAM_STYLES: Record<TeamName, string> = {
-  growth: "bg-cyan-400/10 text-cyan-300 border-cyan-400/25",
-  tech: "bg-violet-400/10 text-violet-300 border-violet-400/25",
-  operations: "bg-orange-400/10 text-orange-300 border-orange-400/25",
-  progirls: "bg-pink-400/10 text-pink-300 border-pink-400/25",
+  growth: "bg-[var(--team-growth-fill)] text-[var(--team-growth-text)] border-[var(--team-growth-border)]",
+  tech: "bg-[var(--team-tech-fill)] text-[var(--team-tech-text)] border-[var(--team-tech-border)]",
+  operations: "bg-[var(--team-operations-fill)] text-[var(--team-operations-text)] border-[var(--team-operations-border)]",
+  progirls: "bg-[var(--team-progirls-fill)] text-[var(--team-progirls-text)] border-[var(--team-progirls-border)]",
 };
 
 const TEAM_TAB_ACTIVE: Record<TeamName, string> = {
-  growth: "bg-cyan-400/10 text-cyan-300",
-  tech: "bg-violet-400/10 text-violet-300",
-  operations: "bg-orange-400/10 text-orange-300",
-  progirls: "bg-pink-400/10 text-pink-300",
+  growth: "bg-[var(--team-growth-fill)] text-[var(--team-growth-text)]",
+  tech: "bg-[var(--team-tech-fill)] text-[var(--team-tech-text)]",
+  operations: "bg-[var(--team-operations-fill)] text-[var(--team-operations-text)]",
+  progirls: "bg-[var(--team-progirls-fill)] text-[var(--team-progirls-text)]",
 };
 
 export function teamTabClass(team: TeamName, active: boolean): string {

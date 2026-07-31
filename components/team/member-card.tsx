@@ -84,6 +84,7 @@ export function MemberCard({
               <Button
                 variant="ghost"
                 size="iconSm"
+                aria-label="Member actions"
                 className="ml-auto opacity-0 transition-opacity duration-[160ms] group-hover:opacity-100 focus-visible:opacity-100"
               />
             }

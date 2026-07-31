@@ -179,7 +179,7 @@ export function TaskDialog({
               loading={loadingMembers && teamMembers.length === 0}
             />
             {mode === "create" && (
-              <p className="t-caption text-[#6E7686] mt-1.5">
+              <p className="t-caption text-[#A7B0C0] mt-1.5">
                 Everyone added here receives the task and must each submit before it enters review.
               </p>
             )}

@@ -22,6 +22,7 @@ import { StatusBadge } from "@/components/ui/status-badge"
 import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from "@/components/ui/tooltip"
 import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover"
 import Combobox from "@/components/ui/combobox"
+import { Stagger, StaggerItem } from "@/components/layout/stagger"
 import { cn } from "@/lib/utils"
 import { TEAM_STYLE, STATUS_STYLE, STATUS_ORDER, type Team, type Status } from "@/lib/design"
 import type { DBTask, TeamMember, TaskCollaborator } from "@/lib/types"
@@ -62,11 +63,6 @@ function Avatar({
       {initials(name)}
     </span>
   )
-}
-
-const rowContainer = {
-  hidden: {},
-  visible: { transition: { staggerChildren: 0.02 } },
 }
 
 interface TaskTableProps {
@@ -144,7 +140,7 @@ export function TaskTable({
       <div className="surface-card">
           <table className="w-full border-collapse text-left">
             <thead className="sticky top-[124px] z-10">
-              <tr className="h-10 surface-glass !border-0 !border-b !border-b-[rgba(255,255,255,0.09)] rounded-none">
+              <tr className="h-10 bg-[#12151C] border-0 border-b border-b-[rgba(255,255,255,0.09)] rounded-none">
                 <th className="w-[38px] px-4">
                   <input
                     type="checkbox"
@@ -206,7 +202,7 @@ export function TaskTable({
                 </tr>
               </tbody>
             ) : (
-              <motion.tbody variants={rowContainer} initial="hidden" animate="visible">
+              <Stagger as="tbody">
                 {tasks.map((task, index) => {
                   const assigneeName = memberMap.get(task.assignee_id) ?? task.assignee_id
                   const assigneeTeam = memberTeamMap.get(task.assignee_id) ?? task.team
@@ -218,14 +214,16 @@ export function TaskTable({
                   const showDueToday = due && due.today && task.status !== "done"
                   const selected = selectedIds.has(task.id)
                   const extraCollabs = Math.max(0, collabs.length - 2)
+                  const rowClassName = "group relative h-[52px] border-b border-[rgba(255,255,255,0.05)] transition-colors duration-[160ms] ease-standard hover:bg-[rgba(255,255,255,0.035)] data-[state=selected]:bg-[rgba(107,138,253,0.07)]"
+                  const RowWrapper = index <= 11 ? StaggerItem : "tr"
+                  const rowExtraProps = index <= 11 ? { as: "tr" as const, fade: true } : {}
 
                   return (
-                    <motion.tr
+                    <RowWrapper
                       key={task.id}
-                      variants={{ hidden: { opacity: 0 }, visible: { opacity: 1 } }}
-                      transition={{ duration: 0.22, delay: Math.min(index, 11) * 0.02 }}
+                      {...rowExtraProps}
                       data-state={selected ? "selected" : undefined}
-                      className="group relative h-[52px] border-b border-[rgba(255,255,255,0.05)] transition-colors duration-[160ms] ease-standard hover:bg-[rgba(255,255,255,0.035)] data-[state=selected]:bg-[rgba(107,138,253,0.07)]"
+                      className={rowClassName}
                     >
                       <td className="relative px-4">
                         <span
@@ -290,7 +288,7 @@ export function TaskTable({
                               showDueWarning
                                 ? "text-[#FCA5A5]"
                                 : showDueToday
-                                ? "text-[#FDE68A]"
+                                ? "text-[var(--status-review-text)]"
                                 : "text-[#A7B0C0]"
                             )}
                           >
@@ -306,7 +304,7 @@ export function TaskTable({
                           <Tooltip>
                             <TooltipTrigger
                               render={
-                                <Button variant="ghost" size="iconSm" onClick={() => onEdit(task)} />
+                                <Button variant="ghost" size="iconSm" aria-label="Edit task" onClick={() => onEdit(task)} />
                               }
                             >
                               <Pencil />
@@ -315,12 +313,9 @@ export function TaskTable({
                           </Tooltip>
 
                           <Popover>
-                            <Tooltip>
-                              <TooltipTrigger render={<PopoverTrigger render={<Button variant="ghost" size="iconSm" />} />}>
-                                <UserPlus />
-                              </TooltipTrigger>
-                              <TooltipContent>Assign</TooltipContent>
-                            </Tooltip>
+                            <PopoverTrigger render={<Button variant="ghost" size="iconSm" aria-label="Assign" />}>
+                              <UserPlus />
+                            </PopoverTrigger>
                             <PopoverContent className="w-[220px]">
                               <Combobox
                                 items={memberOptions}
@@ -338,7 +333,8 @@ export function TaskTable({
                                     <Button
                                       variant="ghost"
                                       size="iconSm"
-                                      className="text-[#86EFAC] hover:bg-[rgba(34,197,94,0.14)]"
+                                      aria-label="Approve"
+                                      className="text-[var(--status-done-text)] hover:bg-[var(--status-done-fill)]"
                                       onClick={() => onApprove(task)}
                                     />
                                   }
@@ -353,7 +349,8 @@ export function TaskTable({
                                     <Button
                                       variant="ghost"
                                       size="iconSm"
-                                      className="text-[#FDE68A] hover:bg-[rgba(250,204,21,0.14)]"
+                                      aria-label="Send back"
+                                      className="text-[var(--status-review-text)] hover:bg-[var(--status-review-fill)]"
                                       onClick={() => onReject(task)}
                                     />
                                   }
@@ -371,6 +368,7 @@ export function TaskTable({
                                 <Button
                                   variant="ghost"
                                   size="iconSm"
+                                  aria-label="Delete"
                                   className="text-[#FCA5A5] hover:bg-[rgba(239,68,68,0.14)]"
                                   onClick={() => onDeleteRequest(task)}
                                 />
@@ -382,10 +380,10 @@ export function TaskTable({
                           </Tooltip>
                         </div>
                       </td>
-                    </motion.tr>
+                    </RowWrapper>
                   )
                 })}
-              </motion.tbody>
+              </Stagger>
             )}
           </table>
 
@@ -423,7 +421,7 @@ export function TaskTable({
         <motion.div
           initial={{ opacity: 0, y: 16 }}
           animate={{ opacity: 1, y: 0 }}
-          className="fixed bottom-6 left-1/2 z-30 flex -translate-x-1/2 items-center gap-3 rounded-card surface-glass px-4 py-2.5 shadow-popover"
+          className="fixed bottom-6 left-1/2 z-30 flex -translate-x-1/2 items-center gap-3 rounded-card bg-[#171B23] border border-[rgba(255,255,255,0.09)] px-4 py-2.5 shadow-popover"
         >
           <span className="t-body-sm text-[#E8EBF2]">{selectedIds.size} selected</span>
           <span className="h-4 w-px bg-[rgba(255,255,255,0.09)]" />
@@ -468,9 +466,16 @@ export function TaskTable({
             Delete
           </Button>
 
-          <Button variant="ghost" size="iconSm" onClick={onClearSelection}>
-            <X />
-          </Button>
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <Button variant="ghost" size="iconSm" aria-label="Clear selection" onClick={onClearSelection} />
+              }
+            >
+              <X />
+            </TooltipTrigger>
+            <TooltipContent>Clear selection</TooltipContent>
+          </Tooltip>
         </motion.div>
       )}
     </TooltipProvider>

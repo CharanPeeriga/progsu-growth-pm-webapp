@@ -15,7 +15,7 @@ export function EmptyState({ icon: Icon, title, description, action }: EmptyStat
         <Icon className="size-5" />
       </span>
       <h3 className="t-h3 text-[#E8EBF2]">{title}</h3>
-      <p className="t-body-sm text-[#6E7686] max-w-[320px]">{description}</p>
+      <p className="t-body-sm text-[#A7B0C0] max-w-[320px]">{description}</p>
       {action && <div className="mt-1">{action}</div>}
     </div>
   )

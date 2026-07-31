@@ -5,6 +5,7 @@ import { Sparkles } from "lucide-react"
 import { EmptyState } from "@/components/ui/empty-state"
 import { Button } from "@/components/ui/button"
 import { EventCard } from "@/components/events/event-card"
+import { Stagger, StaggerItem } from "@/components/layout/stagger"
 import type { GuildCalendarEvent } from "@/lib/types"
 
 interface AgendaRailProps {
@@ -49,22 +50,23 @@ export function AgendaRail({
             .replace(",", " ·");
           return (
             <div key={dateStr} id={`agenda-day-${dateStr}`}>
-              <div className="sticky top-0 z-10 -mx-1 mb-3 px-1 py-2 surface-glass !border-0 rounded-none">
+              <div className="sticky top-0 z-10 -mx-1 mb-3 px-1 py-2 bg-[#0D0F14] rounded-none">
                 <span className="font-mono text-[11px] uppercase tracking-[0.09em] text-[#6E7686]">
                   {label}
                 </span>
               </div>
-              <div className="flex flex-col gap-3">
+              <Stagger className="flex flex-col gap-3">
                 {dayEvents.map((ev) => (
-                  <EventCard
-                    key={ev.id}
-                    event={ev}
-                    isPast={dateStr < todayStr}
-                    isUpNext={ev.id === nextEventId}
-                    onClick={() => onEventClick(ev)}
-                  />
+                  <StaggerItem key={ev.id}>
+                    <EventCard
+                      event={ev}
+                      isPast={dateStr < todayStr}
+                      isUpNext={ev.id === nextEventId}
+                      onClick={() => onEventClick(ev)}
+                    />
+                  </StaggerItem>
                 ))}
-              </div>
+              </Stagger>
             </div>
           );
         })}

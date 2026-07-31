@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Space_Grotesk, Inter, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 import { Toaster } from "@/components/ui/sonner";
+import { MotionProvider } from "@/components/layout/motion-provider";
 
 const display = Space_Grotesk({
   subsets: ["latin"],
@@ -43,8 +44,10 @@ export default function RootLayout({
         <div aria-hidden className="bg-layer-halo" />
         <div aria-hidden className="bg-layer-grid" />
         <div aria-hidden className="bg-layer-grain" />
-        {children}
-        <Toaster richColors position="bottom-right" />
+        <MotionProvider>
+          {children}
+          <Toaster richColors position="bottom-right" />
+        </MotionProvider>
       </body>
     </html>
   );

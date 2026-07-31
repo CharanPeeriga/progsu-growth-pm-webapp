@@ -3,6 +3,7 @@
 import { Plus } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
+import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from "@/components/ui/tooltip"
 import { TaskChip } from "@/components/calendar/task-chip"
 import type { DBTask } from "@/lib/types"
 
@@ -61,6 +62,7 @@ export function MonthGrid({
   const today = toDateStr(new Date());
 
   return (
+    <TooltipProvider>
     <div className="surface-card overflow-hidden">
       <div className="grid grid-cols-7 border-b border-[rgba(255,255,255,0.09)]">
         {WEEKDAYS.map((d) => (
@@ -118,17 +120,25 @@ export function MonthGrid({
                     {date.getDate()}
                   </span>
                 )}
-                <Button
-                  variant="ghost"
-                  size="iconSm"
-                  className="opacity-0 transition-opacity duration-[160ms] group-hover:opacity-100"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onAddDay(date);
-                  }}
-                >
-                  <Plus className="size-[14px]" />
-                </Button>
+                <Tooltip>
+                  <TooltipTrigger
+                    render={
+                      <Button
+                        variant="ghost"
+                        size="iconSm"
+                        aria-label="Add task"
+                        className="opacity-0 transition-opacity duration-[160ms] group-hover:opacity-100"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onAddDay(date);
+                        }}
+                      />
+                    }
+                  >
+                    <Plus className="size-[14px]" />
+                  </TooltipTrigger>
+                  <TooltipContent>Add task</TooltipContent>
+                </Tooltip>
               </div>
 
               <div className="flex flex-col gap-1">
@@ -165,5 +175,6 @@ export function MonthGrid({
         })}
       </div>
     </div>
+    </TooltipProvider>
   );
 }

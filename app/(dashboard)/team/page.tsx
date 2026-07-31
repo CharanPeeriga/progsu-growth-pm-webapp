@@ -20,6 +20,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { VpBlock, type VpEntry } from "@/components/team/vp-block";
 import { MemberCard } from "@/components/team/member-card";
 import { MemberDialog, RemoveMemberDialog } from "@/components/team/member-dialog";
+import { Stagger, StaggerItem } from "@/components/layout/stagger";
 import { TEAM_STYLE, type Status } from "@/lib/design";
 
 const GUILD_ID = process.env.NEXT_PUBLIC_DISCORD_GUILD_ID ?? "";
@@ -176,7 +177,7 @@ export default function TeamPage() {
     setRemoving(true);
     try {
       await removeTeamMember(GUILD_ID, removingMember.user_id);
-      toast.success("Removed from team");
+      toast.success("Member removed");
       setRemovingMember(null);
       await loadAll();
     } catch (err) {
@@ -274,19 +275,20 @@ export default function TeamPage() {
           action={<Button onClick={() => setAddOpen(true)}>Add member</Button>}
         />
       ) : (
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
+        <Stagger className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
           {filteredMembers.map((m) => (
-            <MemberCard
-              key={m.id}
-              member={m}
-              isVp={vpKeySet.has(`${m.user_id}:${m.team}`)}
-              statusCounts={statusCountsFor(m.user_id, tasks)}
-              onViewTasks={() => router.push(`/tasks?search=${encodeURIComponent(m.user_id)}`)}
-              onToggleVp={() => handleToggleVp(m.user_id, m.team)}
-              onRemove={() => setRemovingMember(m)}
-            />
+            <StaggerItem key={m.id}>
+              <MemberCard
+                member={m}
+                isVp={vpKeySet.has(`${m.user_id}:${m.team}`)}
+                statusCounts={statusCountsFor(m.user_id, tasks)}
+                onViewTasks={() => router.push(`/tasks?search=${encodeURIComponent(m.user_id)}`)}
+                onToggleVp={() => handleToggleVp(m.user_id, m.team)}
+                onRemove={() => setRemovingMember(m)}
+              />
+            </StaggerItem>
           ))}
-        </div>
+        </Stagger>
       )}
 
       {uniqueUnregistered.length > 0 && (

@@ -8,6 +8,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { motion } from "framer-motion";
 import { AlertCircle, Eye, EyeOff } from "lucide-react";
+import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
+import { T, EASE } from "@/lib/motion";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -62,14 +64,14 @@ export default function LoginPage() {
       <motion.div
         initial={{ opacity: 0, y: 12 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.32, ease: [0.2, 0.8, 0.2, 1] }}
+        transition={{ duration: T.modal, ease: EASE }}
         className="relative z-[3] w-full max-w-[400px]"
       >
         <div className="mb-8 flex flex-col items-center gap-4">
           <motion.span
             initial={{ scale: 0.94 }}
             animate={{ scale: 1 }}
-            transition={{ duration: 0.32, delay: 0.08, ease: [0.2, 0.8, 0.2, 1] }}
+            transition={{ duration: T.modal, delay: 0.08, ease: EASE }}
             className="grid size-12 place-items-center rounded-[14px] font-display text-[22px] font-semibold text-[#060911]"
             style={{
               backgroundImage: "var(--grad-btn)",
@@ -81,7 +83,7 @@ export default function LoginPage() {
           </motion.span>
           <div className="flex flex-col items-center gap-1.5">
             <h1 className="t-display t-grad">Welcome back</h1>
-            <p className="t-body-sm text-[#6E7686]">Sign in to the progsu task manager.</p>
+            <p className="t-body-sm text-[#A7B0C0]">Sign in to the progsu task manager.</p>
           </div>
         </div>
 
@@ -113,16 +115,25 @@ export default function LoginPage() {
                   autoComplete="current-password"
                   className="pr-9"
                 />
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="iconSm"
-                  className="absolute right-1 top-1/2 -translate-y-1/2 text-[#6E7686] hover:text-[#E8EBF2]"
-                  onClick={() => setShowPassword((s) => !s)}
-                  aria-label={showPassword ? "Hide password" : "Show password"}
-                >
-                  {showPassword ? <EyeOff /> : <Eye />}
-                </Button>
+                <Tooltip>
+                  <TooltipTrigger
+                    render={
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="iconSm"
+                        className="absolute right-1 top-1/2 -translate-y-1/2 text-[#6E7686] hover:text-[#E8EBF2]"
+                        onClick={() => setShowPassword((s) => !s)}
+                        aria-label={showPassword ? "Hide password" : "Show password"}
+                      />
+                    }
+                  >
+                    {showPassword ? <EyeOff /> : <Eye />}
+                  </TooltipTrigger>
+                  <TooltipContent side="left">
+                    {showPassword ? "Hide password" : "Show password"}
+                  </TooltipContent>
+                </Tooltip>
               </div>
             </div>
 

@@ -249,7 +249,7 @@ function TasksPageContent() {
           collaborator_ids,
           guild_id: GUILD_ID,
         });
-        toast.success("✅ Task assigned");
+        toast.success("✅ Task created");
 
         if (notification && typeof notification === "object") {
           const n = notification as Record<string, unknown>;
@@ -564,7 +564,7 @@ function TasksPageContent() {
           <DialogHeader>
             <DialogTitle>Delete this task?</DialogTitle>
           </DialogHeader>
-          <p className="t-body-sm text-[#6E7686]">
+          <p className="t-body-sm text-[#A7B0C0]">
             This removes the task for everyone assigned to it. This cannot be undone.
           </p>
           <DialogFooter>
@@ -584,7 +584,7 @@ function TasksPageContent() {
           <DialogHeader>
             <DialogTitle>Send back &ldquo;{rejectingTask?.task_name}&rdquo;?</DialogTitle>
           </DialogHeader>
-          <p className="t-body-sm text-[#6E7686]">This moves the task back to In progress.</p>
+          <p className="t-body-sm text-[#A7B0C0]">This moves the task back to In progress.</p>
           <div>
             <Label className="t-label text-[#A7B0C0] mb-1.5 block">Reason</Label>
             <Input

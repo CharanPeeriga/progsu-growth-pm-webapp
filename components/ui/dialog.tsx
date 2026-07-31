@@ -5,6 +5,7 @@ import { Dialog as DialogPrimitive } from "@base-ui/react/dialog"
 
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
+import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip"
 import { XIcon } from "lucide-react"
 
 function Dialog({ ...props }: DialogPrimitive.Root.Props) {
@@ -61,20 +62,26 @@ function DialogContent({
       >
         {children}
         {showCloseButton && (
-          <DialogPrimitive.Close
-            data-slot="dialog-close"
-            render={
-              <Button
-                variant="ghost"
-                className="absolute top-4 right-4 text-[#6E7686] hover:text-[#E8EBF2]"
-                size="iconSm"
-              />
-            }
-          >
-            <XIcon
-            />
-            <span className="sr-only">Close</span>
-          </DialogPrimitive.Close>
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <DialogPrimitive.Close
+                  data-slot="dialog-close"
+                  render={
+                    <Button
+                      variant="ghost"
+                      className="absolute top-4 right-4 text-[#6E7686] hover:text-[#E8EBF2]"
+                      size="iconSm"
+                      aria-label="Close"
+                    />
+                  }
+                />
+              }
+            >
+              <XIcon />
+            </TooltipTrigger>
+            <TooltipContent side="left">Close</TooltipContent>
+          </Tooltip>
         )}
       </DialogPrimitive.Popup>
     </DialogPortal>
@@ -136,7 +143,7 @@ function DialogDescription({
     <DialogPrimitive.Description
       data-slot="dialog-description"
       className={cn(
-        "t-body-sm text-[#6E7686] mt-1 *:[a]:underline *:[a]:underline-offset-3 *:[a]:hover:text-[#E8EBF2]",
+        "t-body-sm text-[#A7B0C0] mt-1 *:[a]:underline *:[a]:underline-offset-3 *:[a]:hover:text-[#E8EBF2]",
         className
       )}
       {...props}

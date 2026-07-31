@@ -366,7 +366,7 @@ input[type="date"]::-webkit-calendar-picker-indicator:hover {
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
   }
-  .surface-card-interactive:hover { transform: none; }
+  .surface-card-interactive:hover, .lift:hover, .press:active { transform: none; }
 }
 
 @layer components {
@@ -415,4 +415,21 @@ input[type="date"]::-webkit-calendar-picker-indicator:hover {
 
   .cal-cell-last-col { border-right-width: 0; }
   .cal-cell-last-row { border-bottom-width: 0; }
+}
+
+@layer utilities {
+  .press { transition: transform var(--dur-press) var(--ease-standard); }
+  .press:active { transform: scale(0.97); }
+
+  .lift { transition: transform var(--dur-hover) var(--ease-standard), box-shadow var(--dur-hover) var(--ease-standard); }
+  .lift:hover { transform: translateY(-2px); }
+
+  .link-underline {
+    background-image: linear-gradient(currentColor, currentColor);
+    background-size: 0% 1px;
+    background-position: 0 100%;
+    background-repeat: no-repeat;
+    transition: background-size var(--dur-hover) var(--ease-standard);
+  }
+  .link-underline:hover { background-size: 100% 1px; }
 }

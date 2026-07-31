@@ -31,6 +31,7 @@ import {
 } from "@/components/ui/dialog";
 import { AgendaRail } from "@/components/events/agenda-rail";
 import { getMonthGrid, toDateStr } from "@/components/calendar/month-grid";
+import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 
 const MONTH_NAMES = [
@@ -435,15 +436,39 @@ export default function EventsPage() {
         actions={
           <>
             <div className="flex items-center gap-1 rounded-control border border-[rgba(255,255,255,0.09)] bg-[#12151C] p-0.5">
-              <Button variant="ghost" size="iconSm" onClick={() => navigate(-1)}>
-                <ChevronLeft className="size-[15px]" />
-              </Button>
+              <Tooltip>
+                <TooltipTrigger
+                  render={
+                    <Button
+                      variant="ghost"
+                      size="iconSm"
+                      aria-label="Previous month"
+                      onClick={() => navigate(-1)}
+                    />
+                  }
+                >
+                  <ChevronLeft className="size-[15px]" />
+                </TooltipTrigger>
+                <TooltipContent>Previous month</TooltipContent>
+              </Tooltip>
               <span className="min-w-[124px] px-1 text-center font-display text-[13.5px] font-semibold tracking-[-0.01em] text-[#E8EBF2]">
                 {MONTH_NAMES[anchor.getMonth()]} {anchor.getFullYear()}
               </span>
-              <Button variant="ghost" size="iconSm" onClick={() => navigate(1)}>
-                <ChevronRight className="size-[15px]" />
-              </Button>
+              <Tooltip>
+                <TooltipTrigger
+                  render={
+                    <Button
+                      variant="ghost"
+                      size="iconSm"
+                      aria-label="Next month"
+                      onClick={() => navigate(1)}
+                    />
+                  }
+                >
+                  <ChevronRight className="size-[15px]" />
+                </TooltipTrigger>
+                <TooltipContent>Next month</TooltipContent>
+              </Tooltip>
             </div>
             <Button variant="secondary" size="default" onClick={goToday}>
               Today
