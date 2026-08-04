@@ -76,8 +76,7 @@ export function TaskDialog({
     color: TEAM_STYLE[t].base,
   }))
 
-  const membersInTeam = team ? teamMembers.filter((m) => m.team === team) : teamMembers
-  const assigneeOptions = membersInTeam
+  const assigneeOptions = teamMembers
     .filter((m) => !assigneeIds.includes(m.user_id))
     .map((m) => ({ value: m.user_id, label: m.display_name || m.user_id }))
 
