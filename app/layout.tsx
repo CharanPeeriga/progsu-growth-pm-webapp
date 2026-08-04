@@ -2,11 +2,12 @@ import type { Metadata } from "next";
 import { Space_Grotesk, Inter, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 import { Toaster } from "@/components/ui/sonner";
-import { MotionProvider } from "@/components/layout/motion-provider";
 
+// Only the weights the type scale actually references are downloaded — every
+// extra weight is another font file on the critical path.
 const display = Space_Grotesk({
   subsets: ["latin"],
-  weight: ["500", "600", "700"],
+  weight: ["600"],
   variable: "--font-display",
   display: "swap",
 });
@@ -41,13 +42,8 @@ export default function RootLayout({
       className={`${display.variable} ${body.variable} ${mono.variable} dark`}
     >
       <body className="min-h-screen bg-base text-primary font-body antialiased">
-        <div aria-hidden className="bg-layer-halo" />
-        <div aria-hidden className="bg-layer-grid" />
-        <div aria-hidden className="bg-layer-grain" />
-        <MotionProvider>
-          {children}
-          <Toaster richColors position="bottom-right" />
-        </MotionProvider>
+        {children}
+        <Toaster richColors position="bottom-right" />
       </body>
     </html>
   );

@@ -1,15 +1,15 @@
 "use client"
 
-import { useTheme } from "next-themes"
 import { Toaster as Sonner, type ToasterProps } from "sonner"
 import { CircleCheckIcon, InfoIcon, TriangleAlertIcon, OctagonXIcon, Loader2Icon } from "lucide-react"
 
+// The app is dark-only (<html class="dark">) and never mounted a ThemeProvider,
+// so next-themes' useTheme() always fell back to "system" anyway — dropping it
+// removes the whole package from the client bundle.
 const Toaster = ({ ...props }: ToasterProps) => {
-  const { theme = "system" } = useTheme()
-
   return (
     <Sonner
-      theme={theme as ToasterProps["theme"]}
+      theme="dark"
       className="toaster group"
       position="bottom-right"
       gap={8}
@@ -32,7 +32,7 @@ const Toaster = ({ ...props }: ToasterProps) => {
       }}
       style={
         {
-          "--normal-bg": "rgba(13,15,20,0.72)",
+          "--normal-bg": "#0D0F14",
           "--normal-text": "#E8EBF2",
           "--normal-border": "var(--border-default)",
           "--border-radius": "var(--radius-card)",

@@ -1,13 +1,5 @@
-import { createClient } from '@supabase/supabase-js';
 import { NextResponse } from 'next/server';
-
-function makeClient() {
-  return createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!,
-    { auth: { persistSession: false } }
-  );
-}
+import { adminClient } from '@/lib/supabase-admin';
 
 async function notifyBot(body: Record<string, unknown>): Promise<void> {
   const url = process.env.BOT_NOTIFY_URL;
@@ -42,7 +34,7 @@ export async function PATCH(
   }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const supabase = makeClient() as any;
+  const supabase = adminClient() as any;
 
   // Fetch the current task to detect what changed
   const { data: oldTask, error: fetchError } = await supabase
@@ -121,7 +113,7 @@ export async function DELETE(
   const id = Number(params.id);
   if (!id) return NextResponse.json({ error: 'Invalid id' }, { status: 400 });
 
-  const supabase = makeClient();
+  const supabase = adminClient();
 
   // Fetch task before deleting so we can include it in the notify payload
   const { data: task } = await supabase

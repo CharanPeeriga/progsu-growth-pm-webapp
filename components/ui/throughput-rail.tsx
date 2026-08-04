@@ -1,7 +1,3 @@
-"use client"
-
-import { motion } from "framer-motion"
-
 import { STATUS_STYLE, STATUS_ORDER, type Status } from "@/lib/design"
 
 interface ThroughputRailProps {
@@ -10,6 +6,12 @@ interface ThroughputRailProps {
   showLegend?: boolean
 }
 
+/**
+ * Server component now: no animation, no client JS. Each segment used to be a
+ * framer-motion span animating its width (a layout-triggering property, so
+ * every frame re-laid-out the row) plus a 12px glow shadow. A member card grid
+ * renders one of these per card.
+ */
 export function ThroughputRail({ counts, height = 4, showLegend = false }: ThroughputRailProps) {
   const total = STATUS_ORDER.reduce((a, s) => a + (counts[s] ?? 0), 0) || 1
 
@@ -20,17 +22,10 @@ export function ThroughputRail({ counts, height = 4, showLegend = false }: Throu
           const pct = ((counts[s] ?? 0) / total) * 100
           if (pct === 0) return null
           return (
-            <motion.span
+            <span
               key={s}
               className="rail-seg"
-              initial={{ width: 0 }}
-              animate={{ width: `${pct}%` }}
-              transition={{ duration: 0.5, ease: [0.2, 0.8, 0.2, 1], delay: 0.1 }}
-              style={{
-                background: STATUS_STYLE[s].base,
-                boxShadow: `0 0 12px -2px ${STATUS_STYLE[s].base}`,
-                opacity: 0.85,
-              }}
+              style={{ width: `${pct}%`, background: STATUS_STYLE[s].base, opacity: 0.85 }}
             />
           )
         })}

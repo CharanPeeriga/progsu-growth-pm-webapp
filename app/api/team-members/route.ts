@@ -1,11 +1,17 @@
-import { createClient } from '@supabase/supabase-js';
 import { NextResponse } from 'next/server';
+import { TEAM_STYLE } from '@/lib/design';
+import { adminClient } from '@/lib/supabase-admin';
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!,
-  { auth: { persistSession: false } }
-);
+const supabase = adminClient();
+
+// Rows can be inserted directly by the Discord bot (bypassing this route's own
+// team default below), so a member may reach the client with a null/invalid
+// team. Every TEAM_STYLE[member.team] lookup in the UI assumes a valid key,
+// so coerce here rather than let it crash every page that renders a badge.
+function sanitizeTeam<T extends { team?: string | null }>(row: T): T {
+  if (row.team && row.team in TEAM_STYLE) return row;
+  return { ...row, team: 'growth' };
+}
 
 export async function GET() {
   const guildId = process.env.NEXT_PUBLIC_DISCORD_GUILD_ID;
@@ -15,7 +21,7 @@ export async function GET() {
     .eq('guild_id', guildId)
     .order('added_at', { ascending: true });
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json(data ?? []);
+  return NextResponse.json((data ?? []).map(sanitizeTeam));
 }
 
 export async function POST(req: Request) {

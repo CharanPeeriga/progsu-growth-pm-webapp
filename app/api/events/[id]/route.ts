@@ -1,13 +1,5 @@
-import { createClient } from '@supabase/supabase-js';
 import { NextResponse } from 'next/server';
-
-function makeClient() {
-  return createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!,
-    { auth: { persistSession: false } }
-  );
-}
+import { adminClient } from '@/lib/supabase-admin';
 
 export async function PATCH(
   request: Request,
@@ -23,7 +15,7 @@ export async function PATCH(
     return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 });
   }
 
-  const supabase = makeClient();
+  const supabase = adminClient();
   const { data, error } = await supabase
     .from('events')
     .update({ ...updates, updated_at: new Date().toISOString() })
@@ -43,7 +35,7 @@ export async function DELETE(
   const id = Number(params.id);
   if (!id) return NextResponse.json({ error: 'Invalid id' }, { status: 400 });
 
-  const supabase = makeClient();
+  const supabase = adminClient();
   const { error } = await supabase.from('events').delete().eq('id', id);
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   return NextResponse.json({ success: true });

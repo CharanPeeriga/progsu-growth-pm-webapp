@@ -1,6 +1,6 @@
 "use client"
 
-import { motion } from "framer-motion"
+import * as React from "react"
 import {
   ListChecks,
   Pencil,
@@ -19,10 +19,8 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { EmptyState } from "@/components/ui/empty-state"
 import { TeamBadge } from "@/components/ui/team-badge"
 import { StatusBadge } from "@/components/ui/status-badge"
-import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from "@/components/ui/tooltip"
 import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover"
-import Combobox from "@/components/ui/combobox"
-import { Stagger, StaggerItem } from "@/components/layout/stagger"
+import Combobox, { type ComboboxItem } from "@/components/ui/combobox"
 import { cn } from "@/lib/utils"
 import { TEAM_STYLE, STATUS_STYLE, STATUS_ORDER, type Team, type Status } from "@/lib/design"
 import type { DBTask, TeamMember, TaskCollaborator } from "@/lib/types"
@@ -64,6 +62,190 @@ function Avatar({
     </span>
   )
 }
+
+const ROW_CLASS =
+  "group relative h-[52px] border-b border-[rgba(255,255,255,0.05)] transition-colors duration-[160ms] ease-standard hover:bg-[rgba(255,255,255,0.035)] data-[state=selected]:bg-[rgba(107,138,253,0.07)]"
+
+interface TaskRowProps {
+  task: DBTask
+  selected: boolean
+  assigneeName: string
+  assigneeTeam: Team
+  collabs: TaskCollaborator[]
+  collabNames: string[]
+  reassignOpen: boolean
+  memberOptions: ComboboxItem[]
+  onToggleSelect: (id: number) => void
+  onEdit: (task: DBTask) => void
+  onReassign: (task: DBTask, userId: string) => void
+  onDeleteRequest: (task: DBTask) => void
+  onApprove: (task: DBTask) => void
+  onReject: (task: DBTask) => void
+  onReassignOpenChange: (taskId: number | null) => void
+}
+
+/**
+ * Memoized so that selecting a row, opening a menu, or refetching only
+ * re-renders the rows whose own data changed. Every prop is a primitive, a
+ * stable array, or a `useCallback`'d handler — no Maps or Sets, whose identity
+ * changes on every parent render and would defeat the memo.
+ */
+const TaskRow = React.memo(function TaskRow({
+  task,
+  selected,
+  assigneeName,
+  assigneeTeam,
+  collabs,
+  collabNames,
+  reassignOpen,
+  memberOptions,
+  onToggleSelect,
+  onEdit,
+  onReassign,
+  onDeleteRequest,
+  onApprove,
+  onReject,
+  onReassignOpenChange,
+}: TaskRowProps) {
+  const due = task.due_date ? formatDue(task.due_date) : null
+  const showDueWarning = due && due.overdue && task.status !== "done"
+  const showDueToday = due && due.today && task.status !== "done"
+  const extraCollabs = Math.max(0, collabs.length - 2)
+
+  return (
+    <tr data-state={selected ? "selected" : undefined} className={ROW_CLASS}>
+      <td className="relative px-4">
+        <span className="row-rail" style={{ background: STATUS_STYLE[task.status].base }} />
+        <input
+          type="checkbox"
+          className="accent-[#6B8AFD]"
+          checked={selected}
+          onChange={() => onToggleSelect(task.id)}
+          aria-label={`Select task ${task.task_name}`}
+        />
+      </td>
+      <td className="min-w-[280px] px-4 align-middle">
+        <p className="truncate text-[13.5px] font-medium text-[#E8EBF2]">{task.task_name}</p>
+        {task.rejection_reason && (
+          <p className="t-caption truncate text-[#6E7686]">Sent back: {task.rejection_reason}</p>
+        )}
+      </td>
+      <td className="w-[132px] px-4 align-middle">
+        <TeamBadge team={task.team} />
+      </td>
+      <td className="w-[190px] px-4 align-middle">
+        <div className="flex items-center gap-2">
+          <div className="flex items-center">
+            <Avatar name={assigneeName} ringColor={TEAM_STYLE[assigneeTeam].base} />
+            {collabNames.slice(0, 2).map((n, i) => (
+              <Avatar key={i} name={n} ringColor={TEAM_STYLE[assigneeTeam].base} overlap />
+            ))}
+          </div>
+          <span className="truncate text-[13px] text-[#A7B0C0]">{assigneeName}</span>
+          {extraCollabs > 0 && (
+            <span className="font-mono text-[11px] text-[#6E7686]">+{extraCollabs}</span>
+          )}
+        </div>
+      </td>
+      <td className="w-[136px] px-4 align-middle">
+        <StatusBadge status={task.status} />
+      </td>
+      <td className="w-[116px] px-4 align-middle">
+        {due ? (
+          <span
+            className={cn(
+              "t-mono inline-flex items-center gap-1",
+              showDueWarning
+                ? "text-[#FCA5A5]"
+                : showDueToday
+                ? "text-[var(--status-review-text)]"
+                : "text-[#A7B0C0]"
+            )}
+          >
+            {showDueToday ? "Today" : due.label}
+            {showDueWarning && <AlertTriangle className="size-3" />}
+          </span>
+        ) : (
+          <span className="t-mono text-[#6E7686]">—</span>
+        )}
+      </td>
+      <td className="w-[132px] px-4 text-right align-middle">
+        {/* Native `title` tooltips. These were Base UI <Tooltip> roots — five
+            per row, so a 25-row page mounted ~125 floating-ui instances with
+            their own listeners and positioning work, none of it visible. */}
+        <div className="flex items-center justify-end gap-1 opacity-40 transition-opacity duration-[160ms] group-hover:opacity-100 focus-within:opacity-100">
+          <Button
+            variant="ghost"
+            size="iconSm"
+            aria-label="Edit task"
+            title="Edit task"
+            onClick={() => onEdit(task)}
+          >
+            <Pencil />
+          </Button>
+
+          {/* One Popover exists at a time — mounted only for the row whose
+              assign button was clicked, instead of one per row. */}
+          <Popover
+            open={reassignOpen}
+            onOpenChange={(open) => onReassignOpenChange(open ? task.id : null)}
+          >
+            <PopoverTrigger
+              render={<Button variant="ghost" size="iconSm" aria-label="Assign" title="Reassign" />}
+            >
+              <UserPlus />
+            </PopoverTrigger>
+            {reassignOpen && (
+              <PopoverContent className="w-[220px]">
+                <Combobox
+                  items={memberOptions}
+                  onSelect={(v) => onReassign(task, v)}
+                  placeholder="Reassign to…"
+                />
+              </PopoverContent>
+            )}
+          </Popover>
+
+          {task.status === "review" && (
+            <>
+              <Button
+                variant="ghost"
+                size="iconSm"
+                aria-label="Approve"
+                title="Approve"
+                className="text-[var(--status-done-text)] hover:bg-[var(--status-done-fill)]"
+                onClick={() => onApprove(task)}
+              >
+                <Check />
+              </Button>
+              <Button
+                variant="ghost"
+                size="iconSm"
+                aria-label="Send back"
+                title="Send back"
+                className="text-[var(--status-review-text)] hover:bg-[var(--status-review-fill)]"
+                onClick={() => onReject(task)}
+              >
+                <Undo2 />
+              </Button>
+            </>
+          )}
+
+          <Button
+            variant="ghost"
+            size="iconSm"
+            aria-label="Delete"
+            title="Delete"
+            className="text-[#FCA5A5] hover:bg-[rgba(239,68,68,0.14)]"
+            onClick={() => onDeleteRequest(task)}
+          >
+            <Trash2 />
+          </Button>
+        </div>
+      </td>
+    </tr>
+  )
+})
 
 interface TaskTableProps {
   tasks: DBTask[]
@@ -127,265 +309,131 @@ export function TaskTable({
   onBulkReassign,
   onClearSelection,
 }: TaskTableProps) {
+  const [reassignFor, setReassignFor] = React.useState<number | null>(null)
+
   const totalPages = Math.max(1, Math.ceil(totalCount / pageSize))
   const allSelected = tasks.length > 0 && tasks.every((t) => selectedIds.has(t.id))
-  const memberOptions = teamMembers.map((m) => ({
-    value: m.user_id,
-    label: m.display_name || m.user_id,
-    hint: TEAM_STYLE[m.team].label,
-  }))
+
+  const memberOptions = React.useMemo(
+    () =>
+      teamMembers.map((m) => ({
+        value: m.user_id,
+        label: m.display_name || m.user_id,
+        hint: TEAM_STYLE[m.team].label,
+      })),
+    [teamMembers]
+  )
+
+  // Flattened per-row view data, recomputed only when the underlying data
+  // changes rather than on every render of the page.
+  const rows = React.useMemo(
+    () =>
+      tasks.map((task) => {
+        const collabs = (collabByTask.get(task.id) ?? []).filter(
+          (c) => c.user_id !== task.assignee_id
+        )
+        return {
+          task,
+          assigneeName: memberMap.get(task.assignee_id) ?? task.assignee_id,
+          assigneeTeam: memberTeamMap.get(task.assignee_id) ?? task.team,
+          collabs,
+          collabNames: collabs.slice(0, 2).map((c) => memberMap.get(c.user_id) ?? c.user_id),
+        }
+      }),
+    [tasks, collabByTask, memberMap, memberTeamMap]
+  )
 
   return (
-    <TooltipProvider>
+    <>
       <div className="surface-card">
-          <table className="w-full border-collapse text-left">
-            <thead className="sticky top-[124px] z-10">
-              <tr className="h-10 bg-[#12151C] border-0 border-b border-b-[rgba(255,255,255,0.09)] rounded-none">
-                <th className="w-[38px] px-4">
-                  <input
-                    type="checkbox"
-                    className="accent-[#6B8AFD]"
-                    checked={allSelected}
-                    onChange={onToggleSelectAll}
-                    aria-label="Select all tasks"
-                  />
-                </th>
-                <th className="t-overline min-w-[280px] px-4 text-[#6E7686]">TASK</th>
-                <th className="t-overline w-[132px] px-4 text-[#6E7686]">TEAM</th>
-                <th className="t-overline w-[190px] px-4 text-[#6E7686]">ASSIGNEE</th>
-                <th className="t-overline w-[136px] px-4 text-[#6E7686]">STATUS</th>
-                <th className="t-overline w-[116px] px-4 text-[#6E7686]">DUE</th>
-                <th className="w-[132px] px-4 text-right" />
-              </tr>
-            </thead>
+        <table className="w-full border-collapse text-left">
+          <thead className="sticky top-[124px] z-10">
+            <tr className="h-10 bg-[#12151C] border-0 border-b border-b-[rgba(255,255,255,0.09)] rounded-none">
+              <th className="w-[38px] px-4">
+                <input
+                  type="checkbox"
+                  className="accent-[#6B8AFD]"
+                  checked={allSelected}
+                  onChange={onToggleSelectAll}
+                  aria-label="Select all tasks"
+                />
+              </th>
+              <th className="t-overline min-w-[280px] px-4 text-[#6E7686]">TASK</th>
+              <th className="t-overline w-[132px] px-4 text-[#6E7686]">TEAM</th>
+              <th className="t-overline w-[190px] px-4 text-[#6E7686]">ASSIGNEE</th>
+              <th className="t-overline w-[136px] px-4 text-[#6E7686]">STATUS</th>
+              <th className="t-overline w-[116px] px-4 text-[#6E7686]">DUE</th>
+              <th className="w-[132px] px-4 text-right" />
+            </tr>
+          </thead>
 
-            {loading ? (
-              <tbody>
-                {Array.from({ length: 8 }).map((_, i) => (
-                  <tr key={i} className="h-[52px] border-b border-[rgba(255,255,255,0.05)]">
-                    <td className="px-4"><Skeleton className="h-4 w-4" /></td>
-                    <td className="px-4"><Skeleton className="h-4 w-[220px]" /></td>
-                    <td className="px-4"><Skeleton className="h-5 w-[90px] rounded-full" /></td>
-                    <td className="px-4"><Skeleton className="h-4 w-[140px]" /></td>
-                    <td className="px-4"><Skeleton className="h-5 w-[90px] rounded-full" /></td>
-                    <td className="px-4"><Skeleton className="h-4 w-[70px]" /></td>
-                    <td className="px-4" />
-                  </tr>
-                ))}
-              </tbody>
-            ) : tasks.length === 0 ? (
-              <tbody>
-                <tr>
-                  <td colSpan={7}>
-                    {hasAnyTasks ? (
-                      <EmptyState
-                        icon={ListChecks}
-                        title="No tasks match these filters"
-                        description="Clear a filter or create a new task."
-                        action={
-                          hasActiveFilters ? (
-                            <Button variant="ghost" onClick={onClearFilters}>
-                              Clear all filters
-                            </Button>
-                          ) : undefined
-                        }
-                      />
-                    ) : (
-                      <EmptyState
-                        icon={ListChecks}
-                        title="No tasks yet"
-                        description="Create the first task and assign it to a team member."
-                        action={<Button onClick={onCreateTask}>New task</Button>}
-                      />
-                    )}
-                  </td>
+          {loading ? (
+            <tbody>
+              {Array.from({ length: 8 }).map((_, i) => (
+                <tr key={i} className="h-[52px] border-b border-[rgba(255,255,255,0.05)]">
+                  <td className="px-4"><Skeleton className="h-4 w-4" /></td>
+                  <td className="px-4"><Skeleton className="h-4 w-[220px]" /></td>
+                  <td className="px-4"><Skeleton className="h-5 w-[90px] rounded-full" /></td>
+                  <td className="px-4"><Skeleton className="h-4 w-[140px]" /></td>
+                  <td className="px-4"><Skeleton className="h-5 w-[90px] rounded-full" /></td>
+                  <td className="px-4"><Skeleton className="h-4 w-[70px]" /></td>
+                  <td className="px-4" />
                 </tr>
-              </tbody>
-            ) : (
-              <Stagger as="tbody">
-                {tasks.map((task, index) => {
-                  const assigneeName = memberMap.get(task.assignee_id) ?? task.assignee_id
-                  const assigneeTeam = memberTeamMap.get(task.assignee_id) ?? task.team
-                  const collabs = (collabByTask.get(task.id) ?? []).filter(
-                    (c) => c.user_id !== task.assignee_id
-                  )
-                  const due = task.due_date ? formatDue(task.due_date) : null
-                  const showDueWarning = due && due.overdue && task.status !== "done"
-                  const showDueToday = due && due.today && task.status !== "done"
-                  const selected = selectedIds.has(task.id)
-                  const extraCollabs = Math.max(0, collabs.length - 2)
-                  const rowClassName = "group relative h-[52px] border-b border-[rgba(255,255,255,0.05)] transition-colors duration-[160ms] ease-standard hover:bg-[rgba(255,255,255,0.035)] data-[state=selected]:bg-[rgba(107,138,253,0.07)]"
-                  const RowWrapper = index <= 11 ? StaggerItem : "tr"
-                  const rowExtraProps = index <= 11 ? { as: "tr" as const, fade: true } : {}
-
-                  return (
-                    <RowWrapper
-                      key={task.id}
-                      {...rowExtraProps}
-                      data-state={selected ? "selected" : undefined}
-                      className={rowClassName}
-                    >
-                      <td className="relative px-4">
-                        <span
-                          className="row-rail"
-                          style={{ background: STATUS_STYLE[task.status].base }}
-                        />
-                        <input
-                          type="checkbox"
-                          className="accent-[#6B8AFD]"
-                          checked={selected}
-                          onChange={() => onToggleSelect(task.id)}
-                          aria-label={`Select task ${task.task_name}`}
-                        />
-                      </td>
-                      <td className="min-w-[280px] px-4 align-middle">
-                        <p className="truncate text-[13.5px] font-medium text-[#E8EBF2]">
-                          {task.task_name}
-                        </p>
-                        {task.rejection_reason && (
-                          <p className="t-caption truncate text-[#6E7686]">
-                            Sent back: {task.rejection_reason}
-                          </p>
-                        )}
-                      </td>
-                      <td className="w-[132px] px-4 align-middle">
-                        <TeamBadge team={task.team} />
-                      </td>
-                      <td className="w-[190px] px-4 align-middle">
-                        <div className="flex items-center gap-2">
-                          <div className="flex items-center">
-                            <Avatar
-                              name={assigneeName}
-                              ringColor={TEAM_STYLE[assigneeTeam].base}
-                            />
-                            {collabs.slice(0, 2).map((c) => (
-                              <Avatar
-                                key={c.user_id}
-                                name={memberMap.get(c.user_id) ?? c.user_id}
-                                ringColor={TEAM_STYLE[assigneeTeam].base}
-                                overlap
-                              />
-                            ))}
-                          </div>
-                          <span className="truncate text-[13px] text-[#A7B0C0]">
-                            {assigneeName}
-                          </span>
-                          {extraCollabs > 0 && (
-                            <span className="font-mono text-[11px] text-[#6E7686]">
-                              +{extraCollabs}
-                            </span>
-                          )}
-                        </div>
-                      </td>
-                      <td className="w-[136px] px-4 align-middle">
-                        <StatusBadge status={task.status} />
-                      </td>
-                      <td className="w-[116px] px-4 align-middle">
-                        {due ? (
-                          <span
-                            className={cn(
-                              "t-mono inline-flex items-center gap-1",
-                              showDueWarning
-                                ? "text-[#FCA5A5]"
-                                : showDueToday
-                                ? "text-[var(--status-review-text)]"
-                                : "text-[#A7B0C0]"
-                            )}
-                          >
-                            {showDueToday ? "Today" : due.label}
-                            {showDueWarning && <AlertTriangle className="size-3" />}
-                          </span>
-                        ) : (
-                          <span className="t-mono text-[#6E7686]">—</span>
-                        )}
-                      </td>
-                      <td className="w-[132px] px-4 text-right align-middle">
-                        <div className="flex items-center justify-end gap-1 opacity-40 transition-opacity duration-[160ms] group-hover:opacity-100 focus-within:opacity-100">
-                          <Tooltip>
-                            <TooltipTrigger
-                              render={
-                                <Button variant="ghost" size="iconSm" aria-label="Edit task" onClick={() => onEdit(task)} />
-                              }
-                            >
-                              <Pencil />
-                            </TooltipTrigger>
-                            <TooltipContent>Edit task</TooltipContent>
-                          </Tooltip>
-
-                          <Popover>
-                            <PopoverTrigger render={<Button variant="ghost" size="iconSm" aria-label="Assign" />}>
-                              <UserPlus />
-                            </PopoverTrigger>
-                            <PopoverContent className="w-[220px]">
-                              <Combobox
-                                items={memberOptions}
-                                onSelect={(v) => onReassign(task, v)}
-                                placeholder="Reassign to…"
-                              />
-                            </PopoverContent>
-                          </Popover>
-
-                          {task.status === "review" && (
-                            <>
-                              <Tooltip>
-                                <TooltipTrigger
-                                  render={
-                                    <Button
-                                      variant="ghost"
-                                      size="iconSm"
-                                      aria-label="Approve"
-                                      className="text-[var(--status-done-text)] hover:bg-[var(--status-done-fill)]"
-                                      onClick={() => onApprove(task)}
-                                    />
-                                  }
-                                >
-                                  <Check />
-                                </TooltipTrigger>
-                                <TooltipContent>Approve</TooltipContent>
-                              </Tooltip>
-                              <Tooltip>
-                                <TooltipTrigger
-                                  render={
-                                    <Button
-                                      variant="ghost"
-                                      size="iconSm"
-                                      aria-label="Send back"
-                                      className="text-[var(--status-review-text)] hover:bg-[var(--status-review-fill)]"
-                                      onClick={() => onReject(task)}
-                                    />
-                                  }
-                                >
-                                  <Undo2 />
-                                </TooltipTrigger>
-                                <TooltipContent>Send back</TooltipContent>
-                              </Tooltip>
-                            </>
-                          )}
-
-                          <Tooltip>
-                            <TooltipTrigger
-                              render={
-                                <Button
-                                  variant="ghost"
-                                  size="iconSm"
-                                  aria-label="Delete"
-                                  className="text-[#FCA5A5] hover:bg-[rgba(239,68,68,0.14)]"
-                                  onClick={() => onDeleteRequest(task)}
-                                />
-                              }
-                            >
-                              <Trash2 />
-                            </TooltipTrigger>
-                            <TooltipContent>Delete</TooltipContent>
-                          </Tooltip>
-                        </div>
-                      </td>
-                    </RowWrapper>
-                  )
-                })}
-              </Stagger>
-            )}
-          </table>
+              ))}
+            </tbody>
+          ) : tasks.length === 0 ? (
+            <tbody>
+              <tr>
+                <td colSpan={7}>
+                  {hasAnyTasks ? (
+                    <EmptyState
+                      icon={ListChecks}
+                      title="No tasks match these filters"
+                      description="Clear a filter or create a new task."
+                      action={
+                        hasActiveFilters ? (
+                          <Button variant="ghost" onClick={onClearFilters}>
+                            Clear all filters
+                          </Button>
+                        ) : undefined
+                      }
+                    />
+                  ) : (
+                    <EmptyState
+                      icon={ListChecks}
+                      title="No tasks yet"
+                      description="Create the first task and assign it to a team member."
+                      action={<Button onClick={onCreateTask}>New task</Button>}
+                    />
+                  )}
+                </td>
+              </tr>
+            </tbody>
+          ) : (
+            <tbody>
+              {rows.map((row) => (
+                <TaskRow
+                  key={row.task.id}
+                  task={row.task}
+                  selected={selectedIds.has(row.task.id)}
+                  assigneeName={row.assigneeName}
+                  assigneeTeam={row.assigneeTeam}
+                  collabs={row.collabs}
+                  collabNames={row.collabNames}
+                  reassignOpen={reassignFor === row.task.id}
+                  memberOptions={memberOptions}
+                  onToggleSelect={onToggleSelect}
+                  onEdit={onEdit}
+                  onReassign={onReassign}
+                  onDeleteRequest={onDeleteRequest}
+                  onApprove={onApprove}
+                  onReject={onReject}
+                  onReassignOpenChange={setReassignFor}
+                />
+              ))}
+            </tbody>
+          )}
+        </table>
 
         {!loading && tasks.length > 0 && (
           <div className="flex items-center justify-between border-t border-[rgba(255,255,255,0.06)] px-4 py-3">
@@ -418,11 +466,7 @@ export function TaskTable({
       </div>
 
       {selectedIds.size > 0 && (
-        <motion.div
-          initial={{ opacity: 0, y: 16 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="fixed bottom-6 left-1/2 z-30 flex -translate-x-1/2 items-center gap-3 rounded-card bg-[#171B23] border border-[rgba(255,255,255,0.09)] px-4 py-2.5 shadow-popover"
-        >
+        <div className="fixed bottom-6 left-1/2 z-30 flex -translate-x-1/2 items-center gap-3 rounded-card bg-[#171B23] border border-[rgba(255,255,255,0.09)] px-4 py-2.5 shadow-popover">
           <span className="t-body-sm text-[#E8EBF2]">{selectedIds.size} selected</span>
           <span className="h-4 w-px bg-[rgba(255,255,255,0.09)]" />
 
@@ -466,18 +510,17 @@ export function TaskTable({
             Delete
           </Button>
 
-          <Tooltip>
-            <TooltipTrigger
-              render={
-                <Button variant="ghost" size="iconSm" aria-label="Clear selection" onClick={onClearSelection} />
-              }
-            >
-              <X />
-            </TooltipTrigger>
-            <TooltipContent>Clear selection</TooltipContent>
-          </Tooltip>
-        </motion.div>
+          <Button
+            variant="ghost"
+            size="iconSm"
+            aria-label="Clear selection"
+            title="Clear selection"
+            onClick={onClearSelection}
+          >
+            <X />
+          </Button>
+        </div>
       )}
-    </TooltipProvider>
+    </>
   )
 }

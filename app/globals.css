@@ -110,21 +110,24 @@
     --info-fill: rgba(56,189,248,0.12);
     --info-text: #7DD3FC;
 
-    /* gradients */
-    --grad-card: linear-gradient(160deg, rgba(255,255,255,0.045) 0%, rgba(255,255,255,0.015) 38%, rgba(255,255,255,0) 100%);
-    --grad-card-accent: linear-gradient(160deg, rgba(107,138,253,0.14) 0%, rgba(107,138,253,0.035) 45%, rgba(255,255,255,0.01) 100%);
-    --grad-btn: linear-gradient(180deg, #7E99FE 0%, #6B8AFD 48%, #5B79EE 100%);
-    --grad-btn-hover: linear-gradient(180deg, #8FA6FE 0%, #7A96FD 48%, #6784F5 100%);
-    --grad-heading: linear-gradient(180deg, #FFFFFF 0%, #AEB6C6 132%);
-    --grad-divider: linear-gradient(90deg, rgba(255,255,255,0) 0%, rgba(255,255,255,0.12) 50%, rgba(255,255,255,0) 100%);
-    --grad-rail-top: linear-gradient(90deg, rgba(255,255,255,0) 0%, rgba(255,255,255,0.10) 20%, rgba(255,255,255,0.10) 80%, rgba(255,255,255,0) 100%);
+    /* gradients — kept as flat paints. Multi-stop gradients on every card and
+       button forced a full repaint of each surface on hover/scroll; solid
+       colors composite for free. */
+    --grad-card: none;
+    --grad-card-accent: none;
+    --grad-btn: linear-gradient(180deg, #7E99FE 0%, #5B79EE 100%);
+    --grad-btn-hover: linear-gradient(180deg, #8FA6FE 0%, #6784F5 100%);
+    --grad-heading: none;
+    --grad-divider: rgba(255,255,255,0.08);
+    --grad-rail-top: rgba(255,255,255,0.07);
 
-    /* shadows */
-    --shadow-card: 0 1px 0 0 rgba(255,255,255,0.04) inset, 0 8px 24px -12px rgba(0,0,0,0.65);
-    --shadow-card-hover: 0 1px 0 0 rgba(255,255,255,0.06) inset, 0 16px 36px -16px rgba(0,0,0,0.75);
-    --shadow-glow: 0 0 32px -6px rgba(107,138,253,0.28);
-    --shadow-popover: 0 24px 48px -20px rgba(0,0,0,0.85), 0 0 0 1px rgba(255,255,255,0.06);
-    --shadow-btn: 0 1px 0 0 rgba(255,255,255,0.18) inset, 0 6px 16px -8px rgba(107,138,253,0.55);
+    /* shadows — single small blur radius each. Large-radius shadows are the
+       most expensive thing a browser paints per element. */
+    --shadow-card: 0 0 0 0 transparent;
+    --shadow-card-hover: 0 2px 6px rgba(0,0,0,0.45);
+    --shadow-glow: 0 0 0 0 transparent;
+    --shadow-popover: 0 4px 12px rgba(0,0,0,0.5);
+    --shadow-btn: 0 0 0 0 transparent;
 
     /* motion */
     --ease-standard: cubic-bezier(0.2, 0.8, 0.2, 1);
@@ -183,13 +186,15 @@ input[type="date"]::-webkit-calendar-picker-indicator:hover {
   opacity: 1;
 }
 
-/* Page transition */
+/* Page transition — one opacity-only animation on the page root, replacing the
+   framer-motion AnimatePresence tree that re-mounted and animated every child
+   on each navigation. Opacity animates on the compositor and never repaints. */
 @keyframes fadeIn {
-  from { opacity: 0; transform: translateY(8px); }
-  to   { opacity: 1; transform: translateY(0); }
+  from { opacity: 0; }
+  to   { opacity: 1; }
 }
 .page-fade-in {
-  animation: fadeIn 0.2s ease-out forwards;
+  animation: fadeIn 0.14s linear;
 }
 
 @layer base {
@@ -203,39 +208,13 @@ input[type="date"]::-webkit-calendar-picker-indicator:hover {
     line-height: 1.6;
   }
 
-  .bg-layer-halo,
-  .bg-layer-grid,
-  .bg-layer-grain {
-    position: fixed;
-    inset: 0;
-    pointer-events: none;
-  }
+  /* The three fixed full-viewport background layers (accent halo, dot grid
+     with a radial mask, and an SVG-turbulence grain with mix-blend-mode) were
+     removed. Each one forced the compositor to re-blend the whole viewport on
+     every scroll and hover; the grain layer alone cost more per frame than the
+     entire task table. The base color now comes from `body`. */
 
-  .bg-layer-halo {
-    z-index: 0;
-    background:
-      radial-gradient(58% 46% at 50% -12%, rgba(107,138,253,0.16) 0%, rgba(107,138,253,0) 72%),
-      radial-gradient(44% 40% at 92% 88%, rgba(167,139,250,0.075) 0%, rgba(167,139,250,0) 70%);
-  }
-
-  .bg-layer-grid {
-    z-index: 1;
-    background-image: radial-gradient(rgba(255,255,255,0.035) 1px, transparent 1px);
-    background-size: 24px 24px;
-    background-position: 0 0;
-    -webkit-mask-image: radial-gradient(120% 80% at 50% 0%, #000 0%, #000 42%, transparent 78%);
-    mask-image: radial-gradient(120% 80% at 50% 0%, #000 0%, #000 42%, transparent 78%);
-  }
-
-  .bg-layer-grain {
-    z-index: 2;
-    opacity: 0.025;
-    mix-blend-mode: overlay;
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)'/%3E%3C/svg%3E");
-  }
-
-  /* every app surface must sit above the background layers */
-  #app-shell, main, aside, header { position: relative; z-index: 3; }
+  #app-shell, main, aside, header { position: relative; z-index: 1; }
 
   ::selection { background: rgba(107,138,253,0.28); color: #FFFFFF; }
 
@@ -273,91 +252,61 @@ input[type="date"]::-webkit-calendar-picker-indicator:hover {
   .t-stat       { font-family: var(--font-mono); font-size: 30px; line-height: 1; font-weight: 500; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
   .t-stat-sm    { font-family: var(--font-mono); font-size: 20px; line-height: 1; font-weight: 500; letter-spacing: -0.015em; font-variant-numeric: tabular-nums; }
   .t-mono       { font-family: var(--font-mono); font-size: 12.5px; line-height: 1.45; font-weight: 400; font-variant-numeric: tabular-nums; }
-  .t-grad       { background: var(--grad-heading); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  /* was background-clip:text over a gradient — flat color, same weight */
+  .t-grad       { color: #F2F4F9; }
 }
 
 @layer components {
+  /* Flat surfaces: one background color, one border, no gradient, no shadow,
+     no ::before highlight rail. A page renders 5-30 of these, and the old
+     version cost three paint layers each. */
   .surface-card {
     position: relative;
     background-color: var(--ink-850);
-    background-image: var(--grad-card);
     border: 1px solid var(--border-default);
     border-radius: var(--radius-card);
-    box-shadow: var(--shadow-card);
-  }
-  .surface-card::before {
-    content: "";
-    position: absolute;
-    top: 0; left: 0; right: 0;
-    height: 1px;
-    background: var(--grad-rail-top);
-    border-radius: var(--radius-card) var(--radius-card) 0 0;
-    pointer-events: none;
   }
 
   .surface-card-interactive {
-    transition: transform var(--dur-hover) var(--ease-standard),
-                border-color var(--dur-hover) var(--ease-standard),
-                box-shadow var(--dur-hover) var(--ease-standard);
+    transition: background-color var(--dur-hover) var(--ease-standard),
+                border-color var(--dur-hover) var(--ease-standard);
   }
   .surface-card-interactive:hover {
-    transform: translateY(-2px);
+    background-color: var(--ink-800);
     border-color: var(--border-strong);
-    box-shadow: var(--shadow-card-hover);
   }
 
   .surface-featured {
-    background-color: var(--ink-850);
-    background-image: var(--grad-card-accent);
+    background-color: var(--ink-800);
     border: 1px solid var(--border-accent);
-    box-shadow: var(--shadow-card), var(--shadow-glow);
   }
 
+  /* Was backdrop-filter: blur(14px) saturate(140%) on a *sticky* header —
+     the browser had to re-sample and re-blur the scrolling content behind it
+     on every single frame of every scroll. Opaque now. */
   .surface-glass {
-    background-color: rgba(13,15,20,0.72);
-    backdrop-filter: blur(14px) saturate(140%);
-    -webkit-backdrop-filter: blur(14px) saturate(140%);
+    background-color: #0C0E13;
     border: 1px solid var(--border-default);
   }
 
-  .halo-accent { position: relative; isolation: isolate; }
-  .halo-accent::before {
-    content: "";
-    position: absolute;
-    z-index: -1;
-    left: 50%;
-    top: -14%;
-    width: 78%;
-    height: 62%;
-    transform: translateX(-50%);
-    background: var(--accent-halo);
-    filter: blur(64px);
-    border-radius: 999px;
-    pointer-events: none;
-  }
+  /* Was a 64px-blur radial glow behind cards. Kept as a no-op so callers do
+     not need to change. */
+  .halo-accent { position: relative; }
 
   .divider-grad { height: 1px; background: var(--grad-divider); border: 0; }
 
   /* signature element: throughput rail */
   .rail { display: flex; gap: 2px; width: 100%; height: 4px; border-radius: 999px; overflow: hidden; }
-  .rail-seg { height: 100%; border-radius: 999px; transition: width var(--dur-enter) var(--ease-standard); }
+  .rail-seg { height: 100%; border-radius: 999px; }
   .rail-card { position: absolute; top: 0; left: 12px; right: 12px; height: 2px; border-radius: 0 0 999px 999px; }
 
+  /* Static block instead of an infinitely animating shimmer sweep. A loading
+     task table showed ~50 skeletons, i.e. ~50 permanently running animations
+     compositing on top of each other. */
   .skeleton {
-    position: relative;
-    overflow: hidden;
     background: rgba(255,255,255,0.05);
     border-radius: var(--radius-chip);
   }
-  .skeleton::after {
-    content: "";
-    position: absolute;
-    inset: 0;
-    transform: translateX(-100%);
-    background: linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.06) 50%, transparent 100%);
-    animation: shimmer 1.6s infinite;
-  }
-  @keyframes shimmer { to { transform: translateX(100%); } }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -391,15 +340,7 @@ input[type="date"]::-webkit-calendar-picker-indicator:hover {
   }
   .group:hover .row-rail { opacity: 1; }
 
-  .dialog-rail::before {
-    content: "";
-    position: absolute;
-    top: 0; left: 0; right: 0;
-    height: 1px;
-    background: var(--grad-rail-top);
-    border-radius: var(--radius-modal) var(--radius-modal) 0 0;
-    pointer-events: none;
-  }
+  /* .dialog-rail kept as a hook; its decorative 1px gradient rail is gone */
 
   .select-dot::before {
     content: "";
@@ -421,7 +362,7 @@ input[type="date"]::-webkit-calendar-picker-indicator:hover {
   .press { transition: transform var(--dur-press) var(--ease-standard); }
   .press:active { transform: scale(0.97); }
 
-  .lift { transition: transform var(--dur-hover) var(--ease-standard), box-shadow var(--dur-hover) var(--ease-standard); }
+  .lift { transition: transform var(--dur-hover) var(--ease-standard); }
   .lift:hover { transform: translateY(-2px); }
 
   .link-underline {

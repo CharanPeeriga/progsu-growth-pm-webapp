@@ -5,7 +5,6 @@ import { Dialog as SheetPrimitive } from "@base-ui/react/dialog"
 
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
-import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip"
 import { XIcon } from "lucide-react"
 
 function Sheet({ ...props }: SheetPrimitive.Root.Props) {
@@ -29,7 +28,8 @@ function SheetOverlay({ className, ...props }: SheetPrimitive.Backdrop.Props) {
     <SheetPrimitive.Backdrop
       data-slot="sheet-overlay"
       className={cn(
-        "fixed inset-0 z-50 bg-[rgba(4,5,8,0.72)] backdrop-blur-[6px] transition-opacity duration-[280ms] data-ending-style:opacity-0 data-starting-style:opacity-0",
+        // opaque scrim instead of a full-viewport backdrop blur
+        "fixed inset-0 z-50 bg-[rgba(4,5,8,0.82)] transition-opacity duration-[280ms] data-ending-style:opacity-0 data-starting-style:opacity-0",
         className
       )}
       {...props}
@@ -54,34 +54,27 @@ function SheetContent({
         data-slot="sheet-content"
         data-side={side}
         className={cn(
-          "dialog-rail fixed z-50 flex flex-col gap-4 bg-[#12151C] bg-clip-padding text-[13.5px] text-[#E8EBF2] shadow-[0_32px_64px_-24px_rgba(0,0,0,0.9)] transition duration-[280ms] ease-in-out data-ending-style:opacity-0 data-starting-style:opacity-0 data-[side=bottom]:inset-x-0 data-[side=bottom]:bottom-0 data-[side=bottom]:h-auto data-[side=bottom]:border-t data-[side=bottom]:border-[rgba(255,255,255,0.14)] data-[side=bottom]:data-ending-style:translate-y-[2.5rem] data-[side=bottom]:data-starting-style:translate-y-[2.5rem] data-[side=left]:inset-y-0 data-[side=left]:left-0 data-[side=left]:h-full data-[side=left]:w-[420px] data-[side=left]:max-w-full data-[side=left]:rounded-r-modal data-[side=left]:border-r data-[side=left]:border-[rgba(255,255,255,0.14)] data-[side=left]:data-ending-style:translate-x-[-2.5rem] data-[side=left]:data-starting-style:translate-x-[-2.5rem] data-[side=right]:inset-y-0 data-[side=right]:right-0 data-[side=right]:h-full data-[side=right]:w-[420px] data-[side=right]:max-w-full data-[side=right]:rounded-l-modal data-[side=right]:border-l data-[side=right]:border-[rgba(255,255,255,0.14)] data-[side=right]:data-ending-style:translate-x-[2.5rem] data-[side=right]:data-starting-style:translate-x-[2.5rem] data-[side=top]:inset-x-0 data-[side=top]:top-0 data-[side=top]:h-auto data-[side=top]:border-b data-[side=top]:border-[rgba(255,255,255,0.14)] data-[side=top]:data-ending-style:translate-y-[-2.5rem] data-[side=top]:data-starting-style:translate-y-[-2.5rem]",
+          "dialog-rail fixed z-50 flex flex-col gap-4 bg-[#12151C] bg-clip-padding text-[13.5px] text-[#E8EBF2] shadow-[0_8px_24px_rgba(0,0,0,0.6)] transition duration-[280ms] ease-in-out data-ending-style:opacity-0 data-starting-style:opacity-0 data-[side=bottom]:inset-x-0 data-[side=bottom]:bottom-0 data-[side=bottom]:h-auto data-[side=bottom]:border-t data-[side=bottom]:border-[rgba(255,255,255,0.14)] data-[side=bottom]:data-ending-style:translate-y-[2.5rem] data-[side=bottom]:data-starting-style:translate-y-[2.5rem] data-[side=left]:inset-y-0 data-[side=left]:left-0 data-[side=left]:h-full data-[side=left]:w-[420px] data-[side=left]:max-w-full data-[side=left]:rounded-r-modal data-[side=left]:border-r data-[side=left]:border-[rgba(255,255,255,0.14)] data-[side=left]:data-ending-style:translate-x-[-2.5rem] data-[side=left]:data-starting-style:translate-x-[-2.5rem] data-[side=right]:inset-y-0 data-[side=right]:right-0 data-[side=right]:h-full data-[side=right]:w-[420px] data-[side=right]:max-w-full data-[side=right]:rounded-l-modal data-[side=right]:border-l data-[side=right]:border-[rgba(255,255,255,0.14)] data-[side=right]:data-ending-style:translate-x-[2.5rem] data-[side=right]:data-starting-style:translate-x-[2.5rem] data-[side=top]:inset-x-0 data-[side=top]:top-0 data-[side=top]:h-auto data-[side=top]:border-b data-[side=top]:border-[rgba(255,255,255,0.14)] data-[side=top]:data-ending-style:translate-y-[-2.5rem] data-[side=top]:data-starting-style:translate-y-[-2.5rem]",
           className
         )}
-        style={{ backgroundImage: "var(--grad-card)" }}
         {...props}
       >
         {children}
         {showCloseButton && (
-          <Tooltip>
-            <TooltipTrigger
-              render={
-                <SheetPrimitive.Close
-                  data-slot="sheet-close"
-                  render={
-                    <Button
-                      variant="ghost"
-                      className="absolute top-4 right-4 text-[#6E7686] hover:text-[#E8EBF2]"
-                      size="iconSm"
-                      aria-label="Close"
-                    />
-                  }
-                />
-              }
-            >
-              <XIcon />
-            </TooltipTrigger>
-            <TooltipContent side="left">Close</TooltipContent>
-          </Tooltip>
+          <SheetPrimitive.Close
+            data-slot="sheet-close"
+            render={
+              <Button
+                variant="ghost"
+                className="absolute top-4 right-4 text-[#6E7686] hover:text-[#E8EBF2]"
+                size="iconSm"
+                aria-label="Close"
+                title="Close"
+              />
+            }
+          >
+            <XIcon />
+          </SheetPrimitive.Close>
         )}
       </SheetPrimitive.Popup>
     </SheetPortal>

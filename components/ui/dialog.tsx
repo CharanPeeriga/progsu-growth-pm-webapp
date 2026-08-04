@@ -5,7 +5,6 @@ import { Dialog as DialogPrimitive } from "@base-ui/react/dialog"
 
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
-import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip"
 import { XIcon } from "lucide-react"
 
 function Dialog({ ...props }: DialogPrimitive.Root.Props) {
@@ -32,7 +31,9 @@ function DialogOverlay({
     <DialogPrimitive.Backdrop
       data-slot="dialog-overlay"
       className={cn(
-        "fixed inset-0 isolate z-50 bg-[rgba(4,5,8,0.72)] backdrop-blur-[6px] duration-[220ms] data-open:animate-in data-open:fade-in-0 data-closed:animate-out data-closed:fade-out-0",
+        // opaque scrim: blurring the whole page behind a modal cost a
+        // full-viewport blur pass on every frame it was open
+        "fixed inset-0 isolate z-50 bg-[rgba(4,5,8,0.82)] duration-[220ms] data-open:animate-in data-open:fade-in-0 data-closed:animate-out data-closed:fade-out-0",
         className
       )}
       {...props}
@@ -54,34 +55,27 @@ function DialogContent({
       <DialogPrimitive.Popup
         data-slot="dialog-content"
         className={cn(
-          "dialog-rail fixed top-1/2 left-1/2 z-50 grid w-full max-w-[480px] -translate-x-1/2 -translate-y-1/2 gap-4 rounded-modal bg-[#12151C] border border-[rgba(255,255,255,0.14)] shadow-[0_32px_64px_-24px_rgba(0,0,0,0.9)] p-6 outline-none duration-[220ms] data-open:animate-in data-open:fade-in-0 data-open:zoom-in-[0.97] data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-[0.97]",
+          "dialog-rail fixed top-1/2 left-1/2 z-50 grid w-full max-w-[480px] -translate-x-1/2 -translate-y-1/2 gap-4 rounded-modal bg-[#12151C] border border-[rgba(255,255,255,0.14)] shadow-[0_8px_24px_rgba(0,0,0,0.6)] p-6 outline-none duration-[220ms] data-open:animate-in data-open:fade-in-0 data-closed:animate-out data-closed:fade-out-0",
           className
         )}
-        style={{ backgroundImage: "var(--grad-card)" }}
         {...props}
       >
         {children}
         {showCloseButton && (
-          <Tooltip>
-            <TooltipTrigger
-              render={
-                <DialogPrimitive.Close
-                  data-slot="dialog-close"
-                  render={
-                    <Button
-                      variant="ghost"
-                      className="absolute top-4 right-4 text-[#6E7686] hover:text-[#E8EBF2]"
-                      size="iconSm"
-                      aria-label="Close"
-                    />
-                  }
-                />
-              }
-            >
-              <XIcon />
-            </TooltipTrigger>
-            <TooltipContent side="left">Close</TooltipContent>
-          </Tooltip>
+          <DialogPrimitive.Close
+            data-slot="dialog-close"
+            render={
+              <Button
+                variant="ghost"
+                className="absolute top-4 right-4 text-[#6E7686] hover:text-[#E8EBF2]"
+                size="iconSm"
+                aria-label="Close"
+                title="Close"
+              />
+            }
+          >
+            <XIcon />
+          </DialogPrimitive.Close>
         )}
       </DialogPrimitive.Popup>
     </DialogPortal>

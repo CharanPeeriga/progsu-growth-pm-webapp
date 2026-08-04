@@ -1,19 +1,11 @@
-import { createClient } from '@supabase/supabase-js';
 import { NextResponse } from 'next/server';
-
-function makeClient() {
-  return createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!,
-    { auth: { persistSession: false } }
-  );
-}
+import { adminClient } from '@/lib/supabase-admin';
 
 export async function GET() {
   const guildId = process.env.NEXT_PUBLIC_DISCORD_GUILD_ID;
   if (!guildId) return NextResponse.json({ error: 'Server misconfiguration' }, { status: 500 });
 
-  const supabase = makeClient();
+  const supabase = adminClient();
   const { data, error } = await supabase
     .from('vp_roles')
     .select('*')
@@ -39,7 +31,7 @@ export async function POST(request: Request) {
   const guildId = process.env.NEXT_PUBLIC_DISCORD_GUILD_ID;
   if (!guildId) return NextResponse.json({ error: 'Server misconfiguration' }, { status: 500 });
 
-  const supabase = makeClient();
+  const supabase = adminClient();
   // Upsert on (guild_id, user_id, team) so the same person can be VP of
   // multiple teams but cannot be added twice to the same team.
   const { data, error } = await supabase
@@ -68,7 +60,7 @@ export async function DELETE(request: Request) {
   const guildId = process.env.NEXT_PUBLIC_DISCORD_GUILD_ID;
   if (!guildId) return NextResponse.json({ error: 'Server misconfiguration' }, { status: 500 });
 
-  const supabase = makeClient();
+  const supabase = adminClient();
   const { error } = await supabase
     .from('vp_roles')
     .delete()

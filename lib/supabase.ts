@@ -27,7 +27,55 @@ async function apiFetch(url: string, init?: RequestInit): Promise<Response> {
     const json = await res.json().catch(() => ({})) as { error?: string };
     throw new Error(json.error ?? `HTTP ${res.status}`);
   }
+  // Any write invalidates every cached read — the tables are small and
+  // cross-referenced (a task change affects the team, progress and calendar
+  // views), so partial invalidation would only risk showing stale data.
+  if (init?.method && init.method !== 'GET') invalidateReadCache();
   return res;
+}
+
+// ---------------------------------------------------------------------------
+// Read cache
+//
+// Every page mounts and immediately refetches the same three or four endpoints
+// (tasks, team members, collaborators, events), so moving between Tasks, Team,
+// Calendar and Progress re-downloaded the entire dataset each time and left
+// the page on skeletons until it finished. This keeps GET results for a short
+// window and collapses concurrent identical requests into one in-flight fetch.
+// ---------------------------------------------------------------------------
+
+const READ_TTL_MS = 20_000;
+
+type CacheEntry = { at: number; data: unknown };
+const readCache = new Map<string, CacheEntry>();
+const inFlight = new Map<string, Promise<unknown>>();
+
+export function invalidateReadCache(): void {
+  readCache.clear();
+  inFlight.clear();
+}
+
+async function cachedGet<T>(path: string): Promise<T> {
+  const url = `${apiBase()}${path}`;
+
+  const hit = readCache.get(url);
+  if (hit && Date.now() - hit.at < READ_TTL_MS) return hit.data as T;
+
+  const pending = inFlight.get(url);
+  if (pending) return pending as Promise<T>;
+
+  const promise = apiFetch(url)
+    .then((res) => res.json())
+    .then((data: T) => {
+      readCache.set(url, { at: Date.now(), data });
+      return data;
+    })
+    .finally(() => {
+      inFlight.delete(url);
+    });
+
+  inFlight.set(url, promise);
+  return promise;
 }
 
 /**
@@ -47,11 +95,9 @@ export function resetClient() {
 }
 
 export async function fetchAllTasks(team?: TeamName): Promise<DBTask[]> {
-  const url = team
-    ? `${apiBase()}/api/tasks?team=${encodeURIComponent(team)}`
-    : `${apiBase()}/api/tasks`;
-  const res = await apiFetch(url);
-  return res.json();
+  return cachedGet<DBTask[]>(
+    team ? `/api/tasks?team=${encodeURIComponent(team)}` : '/api/tasks'
+  );
 }
 
 export async function insertTask(
@@ -90,8 +136,7 @@ export async function deleteTask(id: number): Promise<void> {
 }
 
 export async function fetchTeamMembers(_guildId: string): Promise<TeamMember[]> {
-  const res = await apiFetch(`${apiBase()}/api/team-members`);
-  return res.json();
+  return cachedGet<TeamMember[]>('/api/team-members');
 }
 
 export async function addTeamMember(
@@ -124,8 +169,7 @@ export async function fetchCollaborators(taskId: number): Promise<TaskCollaborat
 }
 
 export async function fetchAllCollaborators(): Promise<TaskCollaborator[]> {
-  const res = await apiFetch(`${apiBase()}/api/collaborators`);
-  return res.json();
+  return cachedGet<TaskCollaborator[]>('/api/collaborators');
 }
 
 export async function addCollaborator(taskId: number, userId: string): Promise<TaskCollaborator> {
@@ -146,8 +190,7 @@ export async function removeCollaborator(taskId: number, userId: string): Promis
 }
 
 export async function fetchVPRoles(): Promise<VPRole[]> {
-  const res = await apiFetch(`${apiBase()}/api/vp-roles`);
-  return res.json();
+  return cachedGet<VPRole[]>('/api/vp-roles');
 }
 
 export async function addVPRole(userId: string, team: TeamName): Promise<VPRole> {
@@ -168,8 +211,7 @@ export async function removeVPRole(userId: string, team: TeamName): Promise<void
 }
 
 export async function fetchCalendarEvents(): Promise<GuildCalendarEvent[]> {
-  const res = await apiFetch(`${apiBase()}/api/events`);
-  return res.json();
+  return cachedGet<GuildCalendarEvent[]>('/api/events');
 }
 
 export async function createCalendarEvent(event: NewGuildCalendarEvent): Promise<GuildCalendarEvent> {

@@ -72,7 +72,9 @@ export function MemberCard({
         <Avatar
           name={name}
           size={44}
-          style={{ boxShadow: `0 0 0 1px ${t.border}, 0 0 18px -8px ${t.base}` }}
+          // hairline ring only — the team-tinted 18px glow was painted once per
+          // member card, and the roster renders one card per member
+          style={{ boxShadow: `0 0 0 1px ${t.border}` }}
         />
         <div className="flex min-w-0 flex-col gap-1">
           <p className="t-h3 truncate text-[#E8EBF2]">{name}</p>

@@ -14,7 +14,6 @@ import {
   LogOut,
 } from "lucide-react";
 import { useEffect, useState } from "react";
-import { motion } from "framer-motion";
 import { cn } from "@/lib/utils";
 import { createClient } from "@/lib/supabase";
 import { Button } from "@/components/ui/button";
@@ -30,7 +29,6 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
 } from "@/components/ui/dropdown-menu";
-import { EASE, T } from "@/lib/motion";
 
 const navGroups = [
   {
@@ -103,13 +101,14 @@ export function Navbar() {
 
   return (
     <TooltipProvider>
-      <motion.aside
-        animate={{ width: effectiveCollapsed ? 68 : 248 }}
-        transition={{ duration: T.enter, ease: EASE }}
-        className="sticky top-0 z-40 flex h-screen shrink-0 flex-col overflow-hidden bg-[rgba(10,12,17,0.85)] backdrop-blur-[16px] border-r border-[rgba(255,255,255,0.06)]"
+      {/* Opaque background instead of a translucent one over a 16px backdrop
+          blur: the sidebar is full-height and sticky, so the blur was being
+          recomputed against the scrolling page on every frame. Width animates
+          with a plain CSS transition. */}
+      <aside
+        style={{ width: effectiveCollapsed ? 68 : 248 }}
+        className="sticky top-0 z-40 flex h-screen shrink-0 flex-col overflow-hidden bg-[#0A0C11] border-r border-[rgba(255,255,255,0.06)] transition-[width] duration-[220ms] ease-standard"
       >
-        <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-[rgba(255,255,255,0.02)] to-transparent" />
-
         {/* Brand */}
         <div className="relative flex h-16 shrink-0 items-center gap-2.5 px-4">
           <span
@@ -236,7 +235,7 @@ export function Navbar() {
             )}
           </div>
         </div>
-      </motion.aside>
+      </aside>
     </TooltipProvider>
   );
 }

@@ -1,13 +1,5 @@
-import { createClient } from '@supabase/supabase-js';
 import { NextResponse } from 'next/server';
-
-function makeClient() {
-  return createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!,
-    { auth: { persistSession: false } }
-  );
-}
+import { adminClient } from '@/lib/supabase-admin';
 
 export async function GET(request: Request) {
   const guildId = process.env.NEXT_PUBLIC_DISCORD_GUILD_ID;
@@ -18,7 +10,7 @@ export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const team = searchParams.get('team');
 
-  const supabase = makeClient();
+  const supabase = adminClient();
   let query = supabase
     .from('tasks')
     .select('*')
@@ -64,7 +56,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Server misconfiguration' }, { status: 500 });
   }
 
-  const supabase = makeClient();
+  const supabase = adminClient();
   const normalizedDueDate = due_date === '' || due_date === undefined ? null : due_date;
 
   const { data: insertedTask, error: insertError } = await supabase

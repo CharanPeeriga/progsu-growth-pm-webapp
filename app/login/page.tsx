@@ -6,10 +6,7 @@ import { createClient } from "@/lib/supabase";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { motion } from "framer-motion";
 import { AlertCircle, Eye, EyeOff } from "lucide-react";
-import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
-import { T, EASE } from "@/lib/motion";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -52,35 +49,14 @@ export default function LoginPage() {
 
   return (
     <div className="relative flex min-h-screen items-center justify-center px-6 py-12">
-      <div
-        aria-hidden
-        className="pointer-events-none fixed inset-0 z-0"
-        style={{
-          background:
-            "radial-gradient(46% 38% at 50% 34%, rgba(107,138,253,0.22) 0%, rgba(107,138,253,0) 70%)",
-        }}
-      />
-
-      <motion.div
-        initial={{ opacity: 0, y: 12 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: T.modal, ease: EASE }}
-        className="relative z-[3] w-full max-w-[400px]"
-      >
+      <div className="relative w-full max-w-[400px] page-fade-in">
         <div className="mb-8 flex flex-col items-center gap-4">
-          <motion.span
-            initial={{ scale: 0.94 }}
-            animate={{ scale: 1 }}
-            transition={{ duration: T.modal, delay: 0.08, ease: EASE }}
+          <span
             className="grid size-12 place-items-center rounded-[14px] font-display text-[22px] font-semibold text-[#060911]"
-            style={{
-              backgroundImage: "var(--grad-btn)",
-              boxShadow:
-                "0 8px 28px -8px rgba(107,138,253,0.75), 0 1px 0 0 rgba(255,255,255,0.22) inset",
-            }}
+            style={{ backgroundImage: "var(--grad-btn)" }}
           >
             p
-          </motion.span>
+          </span>
           <div className="flex flex-col items-center gap-1.5">
             <h1 className="t-display t-grad">Welcome back</h1>
             <p className="t-body-sm text-[#A7B0C0]">Sign in to the progsu task manager.</p>
@@ -115,37 +91,25 @@ export default function LoginPage() {
                   autoComplete="current-password"
                   className="pr-9"
                 />
-                <Tooltip>
-                  <TooltipTrigger
-                    render={
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="iconSm"
-                        className="absolute right-1 top-1/2 -translate-y-1/2 text-[#6E7686] hover:text-[#E8EBF2]"
-                        onClick={() => setShowPassword((s) => !s)}
-                        aria-label={showPassword ? "Hide password" : "Show password"}
-                      />
-                    }
-                  >
-                    {showPassword ? <EyeOff /> : <Eye />}
-                  </TooltipTrigger>
-                  <TooltipContent side="left">
-                    {showPassword ? "Hide password" : "Show password"}
-                  </TooltipContent>
-                </Tooltip>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="iconSm"
+                  className="absolute right-1 top-1/2 -translate-y-1/2 text-[#6E7686] hover:text-[#E8EBF2]"
+                  onClick={() => setShowPassword((s) => !s)}
+                  aria-label={showPassword ? "Hide password" : "Show password"}
+                  title={showPassword ? "Hide password" : "Show password"}
+                >
+                  {showPassword ? <EyeOff /> : <Eye />}
+                </Button>
               </div>
             </div>
 
             {error && (
-              <motion.div
-                initial={{ opacity: 0, y: -4 }}
-                animate={{ opacity: 1, y: 0 }}
-                className="flex items-start gap-2 rounded-control border border-[rgba(239,68,68,0.28)] bg-[rgba(239,68,68,0.10)] px-3 py-2.5 t-body-sm text-[#FCA5A5]"
-              >
+              <div className="flex items-start gap-2 rounded-control border border-[rgba(239,68,68,0.28)] bg-[rgba(239,68,68,0.10)] px-3 py-2.5 t-body-sm text-[#FCA5A5]">
                 <AlertCircle className="size-[15px] shrink-0 mt-0.5" />
                 {error}
-              </motion.div>
+              </div>
             )}
 
             <Button type="submit" size="lg" className="w-full mt-1" loading={loading}>
@@ -157,7 +121,7 @@ export default function LoginPage() {
         <p className="mt-6 text-center t-caption text-[#4E5665]">
           Access is managed by the exec board. Ask a VP if you need an account.
         </p>
-      </motion.div>
+      </div>
     </div>
   );
 }

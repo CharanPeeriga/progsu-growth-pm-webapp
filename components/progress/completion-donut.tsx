@@ -1,7 +1,3 @@
-"use client"
-
-import { motion } from "framer-motion"
-
 import { STATUS_STYLE } from "@/lib/design"
 
 interface CompletionDonutProps {
@@ -21,14 +17,9 @@ export function CompletionDonut({ rate, done, total }: CompletionDonutProps) {
       <span className="t-overline text-[#6E7686]">Completion rate</span>
 
       <div className="relative" style={{ width: size, height: size }}>
+        {/* Static ring: no gradient def, no drop-shadow filter (SVG filters are
+            re-rasterized on every repaint) and no 0.9s dash animation. */}
         <svg width={size} height={size} className="-rotate-90">
-          <defs>
-            <linearGradient id="ringGrad" x1="0" y1="0" x2="1" y2="1">
-              <stop offset="0%" stopColor="#6B8AFD" />
-              <stop offset="55%" stopColor="#8099FE" />
-              <stop offset="100%" stopColor={STATUS_STYLE.done.base} />
-            </linearGradient>
-          </defs>
           <circle
             cx={size / 2}
             cy={size / 2}
@@ -37,19 +28,16 @@ export function CompletionDonut({ rate, done, total }: CompletionDonutProps) {
             stroke="rgba(255,255,255,0.06)"
             strokeWidth={stroke}
           />
-          <motion.circle
+          <circle
             cx={size / 2}
             cy={size / 2}
             r={r}
             fill="none"
-            stroke="url(#ringGrad)"
+            stroke={rate >= 100 ? STATUS_STYLE.done.base : "#6B8AFD"}
             strokeWidth={stroke}
             strokeLinecap="round"
             strokeDasharray={c}
-            initial={{ strokeDashoffset: c }}
-            animate={{ strokeDashoffset: c - (c * rate) / 100 }}
-            transition={{ duration: 0.9, ease: [0.2, 0.8, 0.2, 1], delay: 0.15 }}
-            style={{ filter: "drop-shadow(0 0 10px rgba(107,138,253,0.45))" }}
+            strokeDashoffset={c - (c * rate) / 100}
           />
         </svg>
         <div className="absolute inset-0 flex flex-col items-center justify-center gap-0.5">
